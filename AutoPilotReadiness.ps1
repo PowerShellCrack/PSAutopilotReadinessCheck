@@ -41,7 +41,6 @@ $ErrorActionPreference = "Stop"
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # Save current progress preference and hide the progress
-$prevProgressPreference = $global:ProgressPreference
 $global:ProgressPreference = 'SilentlyContinue'
 #Check if verbose is used; if it is don't use the nonewline in output
 If($VerbosePreference){$NoNewLine=$False}Else{$NoNewLine=$True}
@@ -61,7 +60,7 @@ Function Get-Symbol{
                     'Lock',
                     'RedX',
                     'Script',
-                    'WarningSign',
+                    'WarningSign'
     )]
     [string]$Symbol
     )
