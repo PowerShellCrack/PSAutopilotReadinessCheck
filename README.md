@@ -42,12 +42,36 @@ Run it against a device name
 .\AutoPilotReadiness.ps1 -DeviceName 'DTOPAW-1Z173170'
 ```
 
+## What it looks like (exampled)
+
+Test against a potential azure ad device
+
+![Azure AD](.images/azureadcheck.png)
+
+Test against a potential hybrid device
+
+![Hybrid](.images/hybridcheck.png)
+
+Test against an existing device
+
+![Hybrid](.images/existingdevice.png)
+
+Failed test
+
+![Azure AD](.images/depprofile_error.png)
+
+## Known issues
+
+- If apps or configuration has assignment filters; this may cause the output to be wrong; this is because the tool doesn't currently check if the device is in a filter.
+
 ## Future plans
 
 - WPF UI
+- Logging
+- support assignment filters
 - Check if device is assigned at least one compliance policy (to ensure device will be compliant)
-
 - Check if device is assigned a user profile
+- Check if device is part of a device filter
 - Check if device is assigned a device category
 - Check Device restrictions against device
 - Check Device limitation against user profile
