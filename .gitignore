@@ -1,0 +1,6 @@
+.vs/
+.vs/*.vs/
+.vscode/
+.vscode/*
+secrets.ps1
+tests.ps1
