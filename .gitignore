@@ -4,3 +4,5 @@
 .vscode/*
 secrets.ps1
 tests.ps1
+Readiness.json
+AutoPilotReadinessAdv.ps1
