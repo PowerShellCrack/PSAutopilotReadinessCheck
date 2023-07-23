@@ -522,10 +522,6 @@ Write-Host ("{0}" -f $EspAppsIds.Count) -ForegroundColor Cyan -NoNewline
 Write-Host (" Apps associated with ESP" ) -ForegroundColor White
 
 
-
-
-
-
 #6. Check to see if one of those groups are assigned to the apps as required.
 #------------------------------------------------------------------------------------------
 <#
