@@ -7,30 +7,25 @@ This code only uses **get** cmdlets. There are no _sets_
 ## Required modules:
 
 - Microsoft.Graph.Authentication
-- Microsoft.Graph.Users
-- Microsoft.Graph.Groups
-- Microsoft.Graph.Identity.DirectoryManagement
-- Microsoft.Graph.Devices.CorporateManagement
-- Microsoft.Graph.DeviceManagement
-- Microsoft.Graph.DeviceManagement.Enrolment
 
-> NOTE Script uses beta graphAPI
+> NOTE Script uses beta graph API
 
 ## Supported
 
 - Powershell 5.1 or higher (Tested with Posh 7.3.5)
 
-
 ## What it checks for
 
 1. Check if device is enrolled as Autopilot Device
-2. Check if the device is assigned a deployment profile and how (group tag, Azure AD group)
-3. Check if device is assigned an ESP and what are the apps assigned to it
-4. Check to see what groups the device is assigned to
-5. Check to see if one of those groups are assigned to the apps as required.
-6. Check type of deploymentprofile is assigned to device (hybrid vs Azure AD)
-7. If Hybrid, check to make sure only one domain join profile is assigned to device
-
+1. Check if the device is assigned a deployment profile and how (group tag, Azure AD group)
+1. Check if device is assigned an ESP and what are the apps assigned to it
+1. Check to see what groups the device is assigned to
+1. Check to see if device groups are assigned to the apps as required.
+1. Check to see if user groups are assigned to the apps as required.
+1. Check type of deploymentprofile is assigned to device (hybrid vs Azure AD)
+1. If Hybrid, check to make sure only one domain join profile is assigned to device
+1. Check if device is assigned a user profile
+1. Check if User is assigned to MDM enrollment group and Intune license
 
 ## How to run
 Run it against a sreial number
@@ -42,7 +37,17 @@ Run it against a device name
 .\AutoPilotReadiness.ps1 -DeviceName 'DTOPAW-1Z173170'
 ```
 
-## What it looks like (exampled)
+Run it against a device name and check licenses if primary user is assigned
+```powershell
+.\AutoPilotReadiness.ps1 -DeviceName 'DTOAAD-1Z156178' -CheckLicenses
+
+```
+Run it against a serial and check licenses for enrolling user
+```powershell
+.\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170' -CheckLicenses -UserPrincipalName 'tracyr@dtolab.ltd'
+```
+
+## What it looks like (example)
 
 Test against a potential azure ad device
 
@@ -70,7 +75,6 @@ Failed test
 - Logging
 - support assignment filters
 - Check if device is assigned at least one compliance policy (to ensure device will be compliant)
-- Check if device is assigned a user profile
 - Check if device is part of a device filter
 - Check if device is assigned a device category
 - Check Device restrictions against device
@@ -78,9 +82,8 @@ Failed test
 - Check if device has supporting OS (using WINRM)
 - Check if user is part of CBA Stage Rollout
 - Check for Organization branding
-- Check if User is assigned a MDM and Windows license
+- Check if user is assigned a Windows license. 
 - Check if user is part of "allow user to Azure AD device" join group
-- Check if user is part of MDM enrollment group
 - Check if device is assigned a post script (eg. rename script, complete script, etc)
             
 # DISCLAIMER
