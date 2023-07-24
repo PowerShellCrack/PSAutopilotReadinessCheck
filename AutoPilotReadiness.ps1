@@ -8,7 +8,7 @@
     .NOTES
         Author		: Dick Tracy <richard.tracy@hotmail.com>
 	    Source		: https://github.com/PowerShellCrack/AutopilotTimeZoneSelectorUI
-        Version		: 1.0.0
+        Version		: 2.0.0
         README      : Review README.md for more details and configurations
         CHANGELOG   : Review CHANGELOG.md for updates and fixes
         IMPORTANT   : By using this script or parts of it, you have read and accepted the DISCLAIMER.md and LICENSE agreement
@@ -172,9 +172,9 @@ Foreach($Module in $Modules){
 ## MAIN
 ## ================================
 Write-Host ("    |---Connecting to tenant...") -NoNewline:$NoNewLine
+#REFERNCE: https://learn.microsoft.com/en-us/graph/permissions-reference
 try{
     $Scopes =  @(
-        'APIConnectors.Read.All'
         'Device.Read.All'
         'Directory.Read.All'
         'GroupMember.Read.All'
@@ -187,9 +187,14 @@ try{
         'DeviceManagementServiceConfig.Read.All'
         'DeviceManagementManagedDevices.Read.All'
         'DeviceManagementRBAC.Read.All'
-        'Organization.Read.All'
-        'Policy.Read.All'
     )
+    If($CheckLicenses){
+        $Scopes += @(
+            'Organization.Read.All'
+            'Policy.Read.All'
+        )
+    }
+
     $null = Connect-MgGraph -Environment $GraphEnvironment -Scopes $Scopes -Verbose:$false
     $MGContext = Get-MgContext
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
@@ -367,51 +372,7 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
     }
 }
 
-
-
-
-# 2. Get all deployment profiles and asssignments
-#------------------------------------------------------------------------------------------
-Write-Host "`n    |---Retrieving all Autopilot deployment profiles and assignments..." -NoNewline
-$DeploymentProfiles = (Invoke-MgGraphRequest -Method GET `
-                        -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeploymentProfiles?`$expand=assignments").Value
-
-$depProfileAssignments = @()
-#TEST  $DepProfile = $DeploymentProfiles[2]
-Foreach($DepProfile in $DeploymentProfiles){
-    
-    #TEST  $assignmentEntry = $DepProfile.assignments.target[0]
-    foreach ($assignmentEntry in $DepProfile.assignments.target)
-    {
-        $assignmentValue = New-Object pscustomobject
-        $assignmentValue | Add-Member -MemberType NoteProperty -Name Name -Value $DepProfile.DisplayName
-        $assignmentValue | Add-Member -MemberType NoteProperty -Name profileId -Value $DepProfile.Id
-        $assignmentValue | Add-Member -MemberType NoteProperty -Name dataType -Value $assignmentEntry.'@odata.type'
-        if ($null -ne $assignmentEntry.deviceAndAppManagementAssignmentFilterType)
-        {
-            $assignmentValue | Add-Member -MemberType NoteProperty -Name TargetFilterType -Value $assignmentEntry.deviceAndAppManagementAssignmentFilterType.ToString()
-        }
-        $assignmentValue | Add-Member -MemberType NoteProperty -Name FilterId -Value $assignmentEntry.deviceAndAppManagementAssignmentFilterId
-        $assignmentValue | Add-Member -MemberType NoteProperty -Name groupId -Value $assignmentEntry.groupId
-        #add to collection
-        $depProfileAssignments += $assignmentValue
-    }
-}
-If($depProfileAssignments.count -ge 1){
-    Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
-    Write-Host ("        |---Deployment Profiles found: ") -ForegroundColor White -NoNewline
-    Write-Host ("{0}" -f $depProfileAssignments.count) -ForegroundColor Cyan
-}Else{
-    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-    Write-error "No Deployment profiles were found! `
-    `nThere must be at least one Deployment profile created and assigned for a device to be Autopilot ready
-    `nCreate a Deployment profile, assign it, and rerun script to continue."
-}
-
-
-
-
-# 3. Get all Azure AD group the device is a member of
+# Get all Azure AD group the device is a member of
 #------------------------------------------------------------------------------------------
 Write-Host ("`n    |---Retrieving groups assigned to device object [{0}]..." -f $AzureADDevice.id) -NoNewline
 $assignedDeviceGroups = @()
@@ -438,6 +399,44 @@ If($assignedDeviceGroups.count -ge 1){
 }
 
 
+# Get all deployment profiles and asssignments
+#------------------------------------------------------------------------------------------
+Write-Host "`n    |---Retrieving all Autopilot deployment profiles and assignments..." -NoNewline
+$DeploymentProfiles = (Invoke-MgGraphRequest -Method GET `
+                        -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeploymentProfiles?`$expand=assignments").Value
+
+$depProfileAssignments = @()
+#TEST  $DepProfile = $DeploymentProfiles[2]
+Foreach($DepProfile in $DeploymentProfiles){
+    
+    #TEST  $assignmentEntry = $DepProfile.assignments.target[0]
+    foreach ($assignmentEntry in $DepProfile.assignments.target)
+    {
+        $assignmentValue = New-Object pscustomobject
+        $assignmentValue | Add-Member -MemberType NoteProperty -Name Name -Value $DepProfile.DisplayName
+        $assignmentValue | Add-Member -MemberType NoteProperty -Name profileId -Value $DepProfile.Id
+        $assignmentValue | Add-Member -MemberType NoteProperty -Name dataType -Value $assignmentEntry.'@odata.type'
+        if ($null -ne $assignmentEntry.deviceAndAppManagementAssignmentFilterType)
+        {
+            $assignmentValue | Add-Member -MemberType NoteProperty -Name TargetFilterType -Value $assignmentEntry.deviceAndAppManagementAssignmentFilterType.ToString()
+        }
+        $assignmentValue | Add-Member -MemberType NoteProperty -Name FilterId -Value $assignmentEntry.deviceAndAppManagementAssignmentFilterId
+        $assignmentValue | Add-Member -MemberType NoteProperty -Name groupId -Value $assignmentEntry.groupId
+        #add to collection
+        $depProfileAssignments += $assignmentValue
+    }
+}
+If($depProfileAssignments.count -gt 0){
+    Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+    Write-Host ("        |---Deployment Profiles found: ") -ForegroundColor White -NoNewline
+    Write-Host ("{0}" -f $depProfileAssignments.count) -ForegroundColor Cyan
+}Else{
+    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+    Write-error "No Deployment profiles were found! `
+    `nThere must be at least one Deployment profile created and assigned for a device to be Autopilot ready
+    `nCreate a Deployment profile, assign it, and rerun script to continue."
+}
+
 
 <#
 Write-Host "    |---Checking if Autopilot device has been deployed before..." -NoNewline
@@ -448,8 +447,9 @@ If($AutopilotDevice.EnrollmentState -eq 'enrolled'){
 }
 #>
 
+# Determine if device is assigned to a deployment profile
+#------------------------------------------------------------------------------------------
 Write-Host "`n    |---Determining if deployment profile is assigned to device..." -NoNewline:$NoNewLine
-
 $associatedAssignments = @()
 #TEST $depProfileAssignment = $depProfileAssignments[0]
 Foreach($depProfileAssignment in $depProfileAssignments){
@@ -502,7 +502,7 @@ If($associatedAssignments.count -eq 1){
 
 
 
-#7. If Hybrid, check to make sure only one domain join profile is assigned to device
+# If Hybrid, check to make sure only one domain join profile is assigned to device
 #------------------------------------------------------------------------------------------
 
 If($HybridProfile){
