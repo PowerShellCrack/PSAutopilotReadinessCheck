@@ -44,7 +44,7 @@ Run it against a device name and check licenses if primary user is assigned
 ```
 Run it against a serial and check licenses for enrolling user
 ```powershell
-.\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170' -CheckLicenses -UserPrincipalName 'tracyr@dtolab.ltd'
+.\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170' -CheckLicenses -UserPrincipalName 'tracyr@contoso.com'
 ```
 
 ## What it looks like (example)

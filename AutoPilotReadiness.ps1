@@ -30,9 +30,9 @@
     .EXAMPLE
         .\AutoPilotReadiness.ps1 -DeviceName 'DTOAAD-1Z156178'
     .EXAMPLE
-        .\AutoPilotReadiness.ps1 -DeviceName 'DTOHAZ-WKHV005'
+        .\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170' -UserPrincipalName 'tracyr@contoso.com' -CheckUserLicense
     .EXAMPLE
-        .\AutoPilotReadiness.ps1 -serial '8099-8675-7986-7060-0472-9892-02'
+        .\AutoPilotReadiness.ps1 -serial '8099-8675-7986-7060-0472-9892-02' -AzureEnvironment 'USGov'
 #>
 [CmdletBinding()]
 Param(
@@ -45,11 +45,13 @@ Param(
     [Parameter(Mandatory = $true,ParameterSetName='serial')]
     [string]$Serial,
 
-    [Parameter(Mandatory = $false)]
+    [Parameter(Mandatory = $false,ParameterSetName='user')]
+    [Parameter(Mandatory = $false,ParameterSetName='serial')]
+    [Parameter(Mandatory = $false,ParameterSetName='device')]
     [string]$UserPrincipalName,
 
-    [Parameter(Mandatory = $false)]
-    [switch]$CheckLicenses
+    [Parameter(Mandatory = $false,ParameterSetName='user')]
+    [switch]$CheckUserLicense
 )
 
 ##======================
@@ -113,38 +115,6 @@ Function Get-Symbol{
        'WarningSign' { Return [char]::ConvertFromUtf32(0x26A0)}
     }
     
-}
-
-Function Set-GapCharacter {
-    <#
-    .SYNOPSIS
-    Sets the gap character for host output
-
-    .PARAMETER Character
-    The character to use for the gap
-    .PARAMETER Gap
-    The number of characters to use for the gap
-    .PARAMETER MessageLength
-    Account for the lenth in the message to allign the gap
-    #>
-    Param(
-        [Parameter(Mandatory = $false)]
-        [ValidateSet(' ','-','_','.')]
-        [string]$Character = '.',
-        [Parameter(Mandatory = $false)]
-        [int]$Gap = 50,
-        [Parameter(Mandatory = $true)]
-        [int]$MessageLength
-    )
-    #$script:GapCharacter = $Character*$Gap
-    If($Gap -lt $MessageLength){
-        $script:GapCharacter = $Character*($Gap) 
-    }else {
-        $script:GapCharacter = $Character*($Gap-$MessageLength)
-    }
-    
-
-    return $script:GapCharacter
 }
 
 Write-Host ("`nPrerequisite check...") -ForegroundColor Cyan
@@ -226,7 +196,7 @@ try{
         'DeviceManagementRBAC.Read.All'
     )
 
-    If($PSBoundParameters.ContainsKey('CheckLicenses')){
+    If($PSBoundParameters.ContainsKey('CheckUserLicense')){
         $Scopes += @(
             'Organization.Read.All'
             'Policy.Read.All'
@@ -824,7 +794,7 @@ Foreach($app in $associatedAssignments){
     }
 }
 
-If($PSBoundParameters.ContainsKey('CheckLicenses')){
+If($PSBoundParameters.ContainsKey('CheckUserLicense')){
     Write-Host ("`n    |---Attempting to retrieve license display names from Microsoft...") -ForegroundColor Gray -NoNewline 
     Try{
         #REFERENCE: https://rakhesh.com/azure/m365-licensing-displayname-to-sku-name-mapping/
@@ -951,7 +921,7 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Cyan -NoNewline
     Write-Host (" groups" ) -ForegroundColor White
     
-    If($PSBoundParameters.ContainsKey('CheckLicenses'))
+    If($PSBoundParameters.ContainsKey('CheckUserLicense'))
     {
         Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $PrimaryAssignedUser.assignedLicenses.count) -ForegroundColor Cyan -NoNewline
@@ -987,7 +957,7 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     
 }
 
-If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.ContainsKey('CheckLicenses')){
+If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
     Write-Host ("`n    |---Checking Intune licenses for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName)
     Foreach($AssignedLicense in $PrimaryAssignedUser.assignedLicenses){
 
@@ -1018,7 +988,7 @@ If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.C
 
 
 # check MDM Policy
-If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckLicenses')){
+If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
     Write-Host ("`n    |---Checking MDM policy for user group...") -NoNewline
     $MDMPolicy = Invoke-MgGraphRequest -Method GET `
             -Uri "$script:GraphEndpoint/beta/policies/mobileDeviceManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
