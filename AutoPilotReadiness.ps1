@@ -3,41 +3,50 @@
         Ensure device is Autopilot Ready
 
     .DESCRIPTION
-        Autopilot readiness is to ensure the device is ready to be reset and Autopilot deployed
-    
+        To ensure a new or existing device is ready to be Autopilot deployed
+
     .NOTES
         Author		: Dick Tracy <richard.tracy@hotmail.com>
 	    Source		: https://github.com/PowerShellCrack/AutopilotTimeZoneSelectorUI
-        Version		: 2.1.0
+        Version		: 2.2.0
         README      : Review README.md for more details and configurations
         CHANGELOG   : Review CHANGELOG.md for updates and fixes
         IMPORTANT   : By using this script or parts of it, you have read and accepted the DISCLAIMER.md and LICENSE agreement
 
     .PARAMETER AzureEnvironment
         Specify the Azure environment for graph
-    
+
     .PARAMETER Serial
         Specify the serial number of a device.
-    
+
     .PARAMETER DeviceName
-        Specify the deviceName to check against. 
+        Specify the deviceName to check against.
 
     .PARAMETER UserPrincipalName
         Specity the UserPrinciplName
 
+    .PARAMETER CheckUserLicense
+        Check user licenses
+
+    .PARAMETER CheckAzureAdvSettings
+        Check additional settings in Azure
+
     .EXAMPLE
        .\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170'
+
     .EXAMPLE
         .\AutoPilotReadiness.ps1 -DeviceName 'DTOAAD-1Z156178'
+
     .EXAMPLE
         .\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170' -UserPrincipalName 'tracyr@contoso.com' -CheckUserLicense
+
     .EXAMPLE
-        .\AutoPilotReadiness.ps1 -serial '8099-8675-7986-7060-0472-9892-02' -AzureEnvironment 'USGov'
+        .\AutoPilotReadiness.ps1 -DeviceName 'DTOAAD-1Z156178' -UserPrincipalName 'tracyr@contoso.com' -CheckUserLicense -CheckAzureAdvSettings
 #>
 [CmdletBinding()]
 Param(
     [ValidateSet('Public','USGov','USDoD')]
-    [string]$AzureEnvironment = 'Public',  
+    [string]$AzureEnvironment = 'Public',
 
     [Parameter(Mandatory = $true,ParameterSetName='device')]
     [string]$DeviceName,
@@ -45,9 +54,13 @@ Param(
     [Parameter(Mandatory = $true,ParameterSetName='serial')]
     [string]$Serial,
 
+    [Parameter(Mandatory = $false,HelpMessage="Please enter a valid user principal name [userid@domain]")]
+    [ValidateScript({$_ -match "^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,4}$"})]
     [string]$UserPrincipalName,
 
-    [switch]$CheckUserLicense
+    [switch]$CheckUserLicense,
+
+    [switch]$CheckAzureAdvSettings
 )
 
 ##======================
@@ -110,7 +123,7 @@ Function Get-Symbol{
        'Script' { Return [char]::ConvertFromUtf32(0x1F4DC)}
        'WarningSign' { Return [char]::ConvertFromUtf32(0x26A0)}
     }
-    
+
 }
 
 Write-Host ("`nPrerequisite check...") -ForegroundColor Cyan
@@ -119,11 +132,11 @@ Write-Host ("`nPrerequisite check...") -ForegroundColor Cyan
 switch($AzureEnvironment){
     'Public' {$script:GraphEndpoint = 'https://graph.microsoft.com';$GraphEnvironment = "Global"}
     'USgov' {$script:GraphEndpoint = 'https://graph.microsoft.us';$GraphEnvironment = "USgov"
-        Write-Error "Autopilot is not available in USgov environment. Exiting script..."
+        Write-Host "Autopilot is not available in USgov environment as of 8/2/2023. Exiting script..." -ForegroundColor Red
         Exit
     }
     'USDoD' {$script:GraphEndpoint = 'https://dod-graph.microsoft.us';$GraphEnvironment = "USGovDoD"
-        Write-Error "Autopilot is not available in USDod environment. Exiting script..."
+        Write-Host "Autopilot is not available in USDod environment as of 8/2/2023. Exiting script..." -ForegroundColor Red
         Exit
 }
     default {$script:GraphEndpoint = 'https://graph.microsoft.com';$GraphEnvironment = "Global"}
@@ -168,7 +181,7 @@ Foreach($Module in $Modules){
             Write-Host ("{0}. {1}" -f (Get-Symbol -Symbol RedX),$_.Exception.message)
             exit
         }
-    } 
+    }
 }
 
 #Install-Module WindowsAutopilotIntune -MinimumVersion 5.3
@@ -183,24 +196,29 @@ try{
         'Directory.Read.All'
         'GroupMember.Read.All'
         'Group.Read.All'
-        'User.ReadBasic.All'
         'User.Read.All'
         'DeviceManagementApps.Read.All'
         'DeviceManagementConfiguration.Read.All'
         'DeviceManagementManagedDevices.Read.All'
         'DeviceManagementServiceConfig.Read.All'
-        'DeviceManagementManagedDevices.Read.All'
-        'DeviceManagementRBAC.Read.All'
     )
 
     If($PSBoundParameters.ContainsKey('CheckUserLicense')){
         $Scopes += @(
-            'Organization.Read.All'
+            'Organization.Read.All' #Required for graph endpoint: subscribedSkus
             'Policy.Read.All'
         )
     }
 
-    $null = Connect-MgGraph -Environment $GraphEnvironment -Scopes $Scopes -Verbose:$false
+    If($PSBoundParameters.ContainsKey('CheckAzureAdvSettings')){
+        $Scopes += @(
+            #'AuditLog.Read.All' #Required for graph endpoint: directoryAudits
+            'Policy.Read.All'
+        )
+    }
+
+
+    $null = Connect-MgGraph -Environment $GraphEnvironment -Scopes ($Scopes | Select-Object -Unique) -Verbose:$false
     $MGContext = Get-MgContext
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
     Write-Host ("        |---Connected as: ") -ForegroundColor White -NoNewline
@@ -208,8 +226,10 @@ try{
 
 }Catch{
 
-    Write-Host ("{0}`n{1}" -f (Get-Symbol -Symbol RedX), $_.Exception.Message) -ForegroundColor Red
-    Write-error "        Unable to connect to tenant. Can't continue!"
+    Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
+    Write-Verbose ("{0} " -f $_.Exception.Message)
+    Write-Host "`nUnable to connect to tenant. Can't continue!" -ForegroundColor Red
+    Exit
 
 }
 
@@ -229,20 +249,21 @@ If ($PSCmdlet.ParameterSetName -eq "device")
         Write-Host ("{0}" -f $AzureADDevice.Id) -ForegroundColor Cyan
         Write-Host ("`n    |---Retrieving Autopilot ZTDID attribute from device object [{0}]..." -f $AzureADDevice.Id) -NoNewline
         #iterate through each PhysicalIds to get Autopilot one
-        Foreach($PhysicalIds in $AzureADDevice.PhysicalIds | where {$_ -match 'ZTDID'}){
+        Foreach($PhysicalIds in $AzureADDevice.PhysicalIds | Where-Object {$_ -match 'ZTDID'}){
             $ZTDID = [System.Text.RegularExpressions.Regex]::Match($PhysicalIds,'\[ZTDID\]:(?<ztdid>.*)').Groups['ztdid'].value
         }
-        
+
     }Else{
-        
+
         Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
+        Write-Verbose ("{0} " -f $_.Exception.Message)
         Write-Host ("Unable to retrieve device in Azure by device name [{0}] `
         `nIf its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD. `
-        `rACTION: Upload hash and rerun script to continue!" -f $DeviceName) -ForegroundColor Red
+        `rACTION: Upload hash and rerun script!" -f $DeviceName) -ForegroundColor Red
         Exit
 
     }
-    
+
     #if the ztdid is there, it should match ap device id
     If($null -ne $ZTDID){
 
@@ -263,22 +284,23 @@ If ($PSCmdlet.ParameterSetName -eq "device")
         }Catch{
 
             Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
+            Write-Verbose ("{0} " -f $_.Exception.Message)
             Write-Host ("Unable to determine if the device name [{0}] is registered as an Autopilot device `
             `nIf its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD `
-            `rACTION: Ensure device has this attribute and rerun script to continue." -f $DeviceName) -ForegroundColor Red
+            `rACTION: Ensure device has this attribute and rerun script." -f $DeviceName) -ForegroundColor Red
             Exit
 
         }
-     
+
     }Else{
 
         Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
         Write-Host ("Device [{0}] is not registered as an Autopilot device `
         `nIf its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD `
-        `rACTION: Ensure device has this attribute and rerun script to continue." -f $DeviceName) -ForegroundColor Red
+        `rACTION: Ensure device has this attribute and rerun script." -f $DeviceName) -ForegroundColor Red
         Exit
     }
-    
+
 
     Write-Host ("`n    |---Retrieving device name from Intune [{0}]..." -f $DeviceName) -NoNewline
     Try{
@@ -306,6 +328,7 @@ If ($PSCmdlet.ParameterSetName -eq "device")
     }Catch{
 
         Write-Host ("{0} " -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow -NoNewline -NoNewline
+        Write-Verbose ("{0} " -f $_.Exception.Message)
         Write-Host ("Device does not exist in Intune, could be new device...") -ForegroundColor Yellow
     }
 }
@@ -317,7 +340,7 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 
     $AutopilotDevice = (Invoke-MgGraphRequest -Method GET `
                                 -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$Serial')").Value
-    If($null -ne $AutopilotDevice){
+    If($AutopilotDevice.Count -gt 0){
 
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
         Write-Host ("        |---AzureAD Object Id: ") -ForegroundColor White -NoNewline
@@ -325,7 +348,7 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
         If($AutopilotDevice.managedDeviceId -eq '00000000-0000-0000-0000-000000000000'){
             Write-Host ("        |---Intune device Id: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f 'Not enrolled') -ForegroundColor Red
-            
+
         }Else{
             Write-Host ("        |---Intune device Id: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f $AutopilotDevice.managedDeviceId) -ForegroundColor Green
@@ -341,12 +364,13 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 
     }Else{
 
-        Write-Host ("{0}`n{1}" -f (Get-Symbol -Symbol RedX), $_.Exception.Message) -ForegroundColor Red
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
         Write-Host ("`nUnable to retrieve Autopilot device from serial. Make sure the serial is correct and try again `
-        `rACTION: Re-import hash and rerun script to continue." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
+        `rACTION: Re-import hash and rerun script." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
         Exit
     }
-    
+
     Write-Host ("`n    |---Retrieving Azure AD device id [{0}]..." -f $AutopilotDevice.AzureAdDeviceId) -NoNewline
     Try{
 
@@ -370,10 +394,11 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 
     }Catch{
 
-        Write-Host ("{0}`n{1}" -f (Get-Symbol -Symbol RedX), $_.Exception.Message) -ForegroundColor Red
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
         Write-Host ("Unable to retrieve device in Azure by device id [{0}] `
         `nIf its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD. `
-        `rACTION: Re-import hash and rerun script to continue." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
+        `rACTION: Re-import hash and rerun script." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
         Exit
 
     }
@@ -403,8 +428,9 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
             }
 
         }Catch{
-            
+
             Write-Host ("{0} " -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow -NoNewline
+            Write-Verbose ("{0} " -f $_.Exception.Message)
             Write-Host "Device does not exist in Intune, could be new device..." -ForegroundColor Yellow
 
         }
@@ -440,9 +466,10 @@ If($null -ne $AzureADDevice){
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
     }
 
-}ELse{
+}Else{
 
-    Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
+    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+    Write-Verbose ("{0} " -f $_.Exception.Message)
     Write-Host ("Device [{0}] is not found in Azure AD. `
     `nIf the device is new, it should be imported as Autopilot device and the device name should be the serial number. `
     `rACTION: Ensure device has been registered to Autopilot." -f $DeviceName) -ForegroundColor Red
@@ -461,7 +488,7 @@ $DeploymentProfiles = (Invoke-MgGraphRequest -Method GET `
 $depProfileAssignments = @()
 #TEST  $DepProfile = $DeploymentProfiles[2]
 Foreach($DepProfile in $DeploymentProfiles){
-    
+
     #TEST  $assignmentEntry = $DepProfile.assignments.target[0]
     foreach ($assignmentEntry in $DepProfile.assignments.target)
     {
@@ -480,14 +507,20 @@ Foreach($DepProfile in $DeploymentProfiles){
     }
 }
 If($depProfileAssignments.count -gt 0){
+
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
     Write-Host ("        |---Deployment Profiles found: ") -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $depProfileAssignments.count) -ForegroundColor Cyan
+
 }Else{
+
     Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-    Write-error "No Deployment profiles were found! `
+    Write-Verbose ("{0} " -f $_.Exception.Message)
+    Write-Host "No Deployment profiles were found! `
     `nThere must be at least one Deployment profile created and assigned for a device to be Autopilot ready
-    `rACTION: Create a Deployment profile, assign it, and rerun script to continue."
+    `rACTION: Create a Deployment profile, assign it, and rerun script." -ForegroundColor Red
+    Exit
+
 }
 
 
@@ -510,20 +543,20 @@ Foreach($depProfileAssignment in $depProfileAssignments){
     switch($depProfileAssignment.dataType){
         '#microsoft.graph.groupAssignmentTarget' {
             If($depProfileAssignment.groupId -in $assignedDeviceGroups.Id){
-                Write-Verbose ("Adding group id [{0}] to associated assignment list" -f $depProfileAssignment.groupId) 
+                Write-Verbose ("Adding group id [{0}] to associated assignment list" -f $depProfileAssignment.groupId)
                 $associatedAssignments += $depProfileAssignment
             }
         }
 
         '#microsoft.graph.exclusionGroupAssignmentTarget' {
             If($depProfileAssignment.groupId -in $assignedDeviceGroups.Id){
-                Write-Verbose ("Excluding group id [{0}] from associated assignment list" -f $depProfileAssignment.groupId) 
-                $associatedAssignments = $associatedAssignments | Where groupId -NotIn $assignedDeviceGroups.Id 
+                Write-Verbose ("Excluding group id [{0}] from associated assignment list" -f $depProfileAssignment.groupId)
+                $associatedAssignments = $associatedAssignments | Where-Object groupId -NotIn $assignedDeviceGroups.Id
             }
         }
 
         '#microsoft.graph.allDevicesAssignmentTarget' {
-            Write-Verbose ("Adding [All devices] group to associated assignment list") 
+            Write-Verbose ("Adding [All devices] group to associated assignment list")
             $associatedAssignments += $depProfileAssignment
         }
     }#end switch
@@ -534,7 +567,7 @@ If($associatedAssignments.count -eq 1){
     Write-Host ("        |---Deployment Profile: ") -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $associatedAssignments.Name) -ForegroundColor Cyan
     Write-Host "        |---Deployment Profile join type: " -ForegroundColor White -NoNewline
-    $HybridProfile = ($DeploymentProfiles | Where DisplayName -eq $associatedAssignments.Name).AdditionalProperties.'@odata.type' -eq '#microsoft.graph.activeDirectoryWindowsAutopilotDeploymentProfile'
+    $HybridProfile = ($DeploymentProfiles | Where-Object DisplayName -eq $associatedAssignments.Name).AdditionalProperties.'@odata.type' -eq '#microsoft.graph.activeDirectoryWindowsAutopilotDeploymentProfile'
     If($HybridProfile){
         Write-Host "Hybrid Azure AD joined" -ForegroundColor Green
     }Else{
@@ -542,15 +575,19 @@ If($associatedAssignments.count -eq 1){
     }
 
 }ElseIf($associatedAssignments.count -gt 1){
+
     Write-Host ("{0} {1} deployment profiles are associated" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Yellow
-    Write-error "Imported device hash has more than one associated Deployment profile! `
+    Write-Host "Imported device hash has more than one associated Deployment profile! `
     `nIf a device has more than one deployment profile associated, it can cause inconsistant Autopilot experience.
-    `rACTION: Assign device to a single deployment profile and rerun script to continue."
+    `rACTION: Assign device to a single deployment profile and rerun script." -ForegroundColor Yellow
+
 }Else{
+
     Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-    Write-error "Unable to determine which Deployment profile is assigned! `
+    Write-Host "Unable to determine which Deployment profile is assigned! `
     `nIf a device has no deployment profile associated, Autopilot will not work correctly.
-    `rACTION: Assign device to a single deployment profile and rerun script to continue."
+    `rACTION: Assign device to a single deployment profile and rerun script." -ForegroundColor Red
+    Exit
 }
 
 
@@ -562,10 +599,10 @@ If($HybridProfile){
     Write-Host "`n    |---Checking to make sure hybrid configuration profile is assigned..." -NoNewline:$NoNewLine
     $domainJoinPolicies = (Invoke-MgGraphRequest -Method GET `
                             -Uri "$script:GraphEndpoint/beta/deviceManagement/deviceConfigurations?`$filter=(isof('microsoft.graph.windowsDomainJoinConfiguration'))&`$expand=assignments").Value
-                        
+
     $hybridJoinPolicyAssignmentList = @()
     Foreach($domainJoinPolicy in $domainJoinPolicies){
-   
+
         foreach ($assignmentEntry in $domainJoinPolicy.assignments.target)
         {
             $assignmentValue = New-Object pscustomobject
@@ -589,20 +626,20 @@ If($HybridProfile){
         switch($haadjAssignment.dataType){
             '#microsoft.graph.groupAssignmentTarget' {
                 If($haadjAssignment.groupId -in $assignedDeviceGroups.Id){
-                    Write-Verbose ("Group id [{0}] is assigned to profile [{1}]" -f $haadjAssignment.groupId,$haadjAssignment.Name) 
+                    Write-Verbose ("Group id [{0}] is assigned to profile [{1}]" -f $haadjAssignment.groupId,$haadjAssignment.Name)
                     $associatedAssignments += $haadjAssignment
                 }
             }
 
             '#microsoft.graph.exclusionGroupAssignmentTarget' {
                 If($haadjAssignment.groupId -in $assignedDeviceGroups.Id){
-                    Write-Verbose ("Group id [{0}] is assigned as excluded; not counted for profile [{1}]" -f $haadjAssignment.groupId,$haadjAssignment.Name) 
-                    $associatedAssignments = $associatedAssignments | Where groupId -NotIn $assignedDeviceGroups.Id 
+                    Write-Verbose ("Group id [{0}] is assigned as excluded; not counted for profile [{1}]" -f $haadjAssignment.groupId,$haadjAssignment.Name)
+                    $associatedAssignments = $associatedAssignments | Where-Object groupId -NotIn $assignedDeviceGroups.Id
                 }
             }
 
             '#microsoft.graph.allDevicesAssignmentTarget' {
-                Write-Verbose ("Group [All devices] is assigned to profile [{0}]" -f $haadjAssignment.Name) 
+                Write-Verbose ("Group [All devices] is assigned to profile [{0}]" -f $haadjAssignment.Name)
                 $associatedAssignments += $haadjAssignment
             }
         }#end switch
@@ -610,19 +647,27 @@ If($HybridProfile){
 
 
     If($associatedAssignments.count -eq 1){
+
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
         Write-Host ("        |---Hybrid configuration profile: ") -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $associatedAssignments.Name) -ForegroundColor Cyan
+
     }ElseIf($associatedAssignments.count -gt 1){
+
         Write-Host ("{0} {1} hybrid profiles are assigned" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Red
-        Write-error "Device assinged as Hybrid joined devices can only have one Hybrid joine configuration profile assigned! `
+        Write-Host "Device assigned as Hybrid joined devices can only have one Hybrid join configuration profile assigned! `
         `nIf a device has more than one configuration profile assigned, it can cause a conflict during Autopilot domain join process.
-        `rACTION: Assign device to a single configuration profile and rerun script to continue."
+        `rACTION: Assign device to a single configuration profile and rerun script." -ForegroundColor Red
+        Exit
+
     }Else{
+
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-error "Unable to determine if a Hybrid Join configuration profile is assigned! `
+        Write-Host "Unable to determine if a Hybrid Join configuration profile is assigned! `
         `nIf a device has no Hybrid Join configuration profile assigned, Autopilot will fail during deployment.
-        `rACTION: Assign device to a single configuration profile and rerun script to continue."
+        `rACTION: Assign device to a single configuration profile and rerun script." -ForegroundColor Red
+        Exit
+
     }
 }
 
@@ -662,7 +707,7 @@ Foreach($espAssignment in $enrollmentAssignmentList){
     switch($espAssignment.dataType){
         '#microsoft.graph.groupAssignmentTarget' {
             If($espAssignment.groupId -in $assignedDeviceGroups.Id){
-                Write-Verbose ("Group id [{0}] is assigned to app [{1}]" -f $espAssignment.groupId,$espAssignment.Name) 
+                Write-Verbose ("Group id [{0}] is assigned to app [{1}]" -f $espAssignment.groupId,$espAssignment.Name)
                 $associatedAssignments += $espAssignment
             }
         }
@@ -670,7 +715,7 @@ Foreach($espAssignment in $enrollmentAssignmentList){
         '#microsoft.graph.exclusionGroupAssignmentTarget' {
             If($espAssignment.groupId -in $assignedDeviceGroups.Id){
                 Write-Verbose ("Group id [{0}] is assigned as excluded; not counted for app [{1}]" -f $espAssignment.groupId,$espAssignment.Name)
-                $associatedAssignments = $associatedAssignments | Where groupId -NotIn $assignedDeviceGroups.Id 
+                $associatedAssignments = $associatedAssignments | Where-Object-Object groupId -NotIn $assignedDeviceGroups.Id
             }
         }
 
@@ -685,27 +730,27 @@ If($associatedAssignments.count -eq 1){
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
     Write-Host ("        |---ESP: ") -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $associatedAssignments.Name) -ForegroundColor Cyan
-    $WinningESP = $ESPProfiles | Where Id -eq $associatedAssignments.profileId
+    $WinningESP = $ESPProfiles | Where-Object-Object Id -eq $associatedAssignments.profileId
 }ElseIf($associatedAssignments.count -ge 1){
     Write-Host ("{0} {1} ESP's are assigned" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Yellow
     #iterate through each group id for name
     Foreach($esp in $associatedAssignments){
-        $espDetails = $ESPProfiles | Where Id -eq $esp.profileId
+        $espDetails = $ESPProfiles | Where-Object Id -eq $esp.profileId
         $LatestPriority = $espDetails.Priority
-        Write-Host ("        |---ESP: ") -ForegroundColor Gray -NoNewline 
-        Write-Host ("{0}" -f $espDetails.displayName) -ForegroundColor Green -NoNewline 
-        Write-Host (" [priority: ") -ForegroundColor Gray -NoNewline 
-        Write-Host ("{0}" -f $LatestPriority) -ForegroundColor Green -NoNewline 
+        Write-Host ("        |---ESP: ") -ForegroundColor Gray -NoNewline
+        Write-Host ("{0}" -f $espDetails.displayName) -ForegroundColor Green -NoNewline
+        Write-Host (" [priority: ") -ForegroundColor Gray -NoNewline
+        Write-Host ("{0}" -f $LatestPriority) -ForegroundColor Green -NoNewline
         Write-Host ("]") -ForegroundColor Gray
-        
+
         If($espDetails.Priority -gt $LatestPriority){
             $LatestPriority = $espDetails.Priority
         }
     }
-    $WinningESP = ($ESPProfiles | Where Priority -eq $LatestPriority)
+    $WinningESP = ($ESPProfiles | Where-Object Priority -eq $LatestPriority)
 }Else{
     Write-Host ("{0} No ESP are assigned; using default" -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow
-    $WinningESP = ($ESPProfiles | Where Priority -eq 0)
+    $WinningESP = ($ESPProfiles | Where-Object Priority -eq 0)
 }
 
 #TEST $WinningESP = $ESPProfiles[1]
@@ -759,29 +804,29 @@ Foreach($appAssignment in $appAssignmentList){
         #determine to add or remove assignment based on target type
         switch($appAssignment.dataType){
             '#microsoft.graph.groupAssignmentTarget' {
-                If(-NOT($associatedAssignments | Where Name -eq $appAssignment.Name)){
-                    Write-Verbose ("Group id [{0}] is assigned as required for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name) 
+                If(-NOT($associatedAssignments | Where-Object Name -eq $appAssignment.Name)){
+                    Write-Verbose ("Group id [{0}] is assigned as required for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name)
                     $associatedAssignments += $appAssignment
                 }
             }
 
             '#microsoft.graph.exclusionGroupAssignmentTarget' {
                 If($appAssignment.groupId -in $assignedDeviceGroups.Id){
-                    Write-Verbose ("Group id [{0}] does not count for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name)  
-                    $associatedAssignments = $associatedAssignments | Where groupId -NotIn $assignedDeviceGroups.Id 
+                    Write-Verbose ("Group id [{0}] does not count for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name)
+                    $associatedAssignments = $associatedAssignments | Where-Object-Object groupId -NotIn $assignedDeviceGroups.Id
                 }
             }
 
             '#microsoft.graph.allDevicesAssignmentTarget' {
-                Write-Verbose ("[All devices] group is assigned as required for app [{0}]" -f $appAssignment.Name)   
-                If(-NOT($associatedAssignments | Where Name -eq $appAssignment.Name)){
+                Write-Verbose ("[All devices] group is assigned as required for app [{0}]" -f $appAssignment.Name)
+                If(-NOT($associatedAssignments | Where-Object Name -eq $appAssignment.Name)){
                     $associatedAssignments += $appAssignment
                 }
             }
 
             '#microsoft.graph.allLicensedUsersAssignmentTarget' {
-                Write-Verbose ("[All Users] group is assigned as required for app [{0}]" -f $appAssignment.Name)  
-                If(-NOT($associatedAssignments | Where Name -eq $appAssignment.Name)){
+                Write-Verbose ("[All Users] group is assigned as required for app [{0}]" -f $appAssignment.Name)
+                If(-NOT($associatedAssignments | Where-Object Name -eq $appAssignment.Name)){
                     $associatedAssignments += $appAssignment
                 }
             }
@@ -789,7 +834,7 @@ Foreach($appAssignment in $appAssignmentList){
     }Else{
         Write-Verbose ("Group id [{0}] is assigned as {2} for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name,$appAssignment.Intent)
     }
-    
+
 }
 
 
@@ -806,11 +851,11 @@ If($associatedAssignments.count -ne $EspAppsIds.count){
 #TEST $app = $associatedAssignments[0]
 #TEST $app = $associatedAssignments[-1]
 Foreach($app in $associatedAssignments){
-    
-    Write-Host ("        |---App: ") -ForegroundColor Gray -NoNewline 
-    Write-Host ("{0}" -f $app.Name) -ForegroundColor Green 
-    
-    
+
+    Write-Host ("        |---App: ") -ForegroundColor Gray -NoNewline
+    Write-Host ("{0}" -f $app.Name) -ForegroundColor Green
+
+
     If($app.dataType -eq '#microsoft.graph.allLicensedUsersAssignmentTarget' ){
         Write-Host ("            |---Assigned to user group: " ) -ForegroundColor White -NoNewline
         Write-Host ("All Users") -ForegroundColor Green
@@ -819,7 +864,7 @@ Foreach($app in $associatedAssignments){
         Write-Host ("All Devices") -ForegroundColor Green
     }
     Else{
-        
+
         #get group name
         $Group = (Invoke-MgGraphRequest -Method GET `
                     -Uri "$script:GraphEndpoint/beta/groups/$($app.groupId)")
@@ -839,7 +884,7 @@ Foreach($app in $associatedAssignments){
 }
 
 If($PSBoundParameters.ContainsKey('CheckUserLicense')){
-    Write-Host ("`n    |---Attempting to retrieve license display names from Microsoft...") -ForegroundColor Gray -NoNewline 
+    Write-Host ("`n    |---Attempting to retrieve license display names from Microsoft...") -ForegroundColor Gray -NoNewline
     Try{
         #REFERENCE: https://rakhesh.com/azure/m365-licensing-displayname-to-sku-name-mapping/
         $licenseCsvURL = 'https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv'
@@ -880,25 +925,25 @@ If($PSBoundParameters.ContainsKey('CheckUserLicense')){
             }
         }
 
-        If(($IntuneLicenses.skuId | Select -Unique).Count -gt 0){    
+        If(($IntuneLicenses.skuId | Select-Object -Unique).Count -gt 0){
             Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
             #TEST $IntuneLicense = $IntuneLicenses[0]
             ForEach ($IntuneLicense in $IntuneLicenses){
                 # determine license name
                 If($licenseHashTable.count -gt 0){
-                    $LicenseName = ($licenseHashTable[$IntuneLicense.skuId].GetEnumerator() | Where Name -eq ProductDisplayName).Value
+                    $LicenseName = ($licenseHashTable[$IntuneLicense.skuId].GetEnumerator() | Where-Object Name -eq ProductDisplayName).Value
                 }Else{
-                    $LicenseName = $IntuneLicense.skuPartNumber 
+                    $LicenseName = $IntuneLicense.skuPartNumber
                 }
 
-                Write-Host ("        |---Available Intune service plan: ") -ForegroundColor Gray -NoNewline 
+                Write-Host ("        |---Available Intune service plan: ") -ForegroundColor Gray -NoNewline
                 Write-Host ("{0}" -f $LicenseName ) -ForegroundColor Green
-                
-            } 
-            
+
+            }
+
         }Else{
             Write-Host ("{0}" -f (Get-Symbol -Symbol WarningSign)) -ForegroundColor Yellow
-            Write-Host ("            |---Available Intune service plan: ") -ForegroundColor Gray -NoNewline 
+            Write-Host ("            |---Available Intune service plan: ") -ForegroundColor Gray -NoNewline
             Write-Host ("{0}" -f 'false') -ForegroundColor Red
         }
     }Catch{
@@ -920,13 +965,16 @@ If($UserPrincipalName)
         #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
         #                    -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
         $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
-        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))                      
+        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
 
     }Catch{
+
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-error ("Unable to retrieve user principal name from Azure [{0}] `
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-Host ("Unable to retrieve user principal name from Azure [{0}] `
         `nIf the user doesn't exist, the appropiate Intune licenses cannot be assigned and Autopilot will fail. `
-        `rACTION: Change user principal name and rerun script to continue." -f $UserPrincipalName)
+        `rACTION: Change user principal name and rerun script." -f $UserPrincipalName) -ForegroundColor Red
+        Exit
     }
 
 }
@@ -938,17 +986,20 @@ ElseIf($IntuneDevice.userPrincipalName)
         #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
         #                        -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
         $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
-        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))        
+        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
     }Catch{
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-error ("Unable to retrieve user principal name from Azure [{0}] `
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-Host ("Unable to retrieve user principal name from Azure [{0}] `
         `nIf the user doesn't exist, the appropiate Intune licenses cannot be assigned and Autopilot will fail. `
-        `rACTION: User principal name and rerun script to continue." -f $IntuneDevice.userPrincipalName)
-    }                     
+        `rACTION: User principal name and rerun script." -f $IntuneDevice.userPrincipalName) -ForegroundColor Red
+        Exit
+    }
+
 }Else{
     Write-Host ("{0}" -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow
     Write-Host "No user specified or primary user is found; unable to determine if Intune license is assigned..." -ForegroundColor Yellow
-}   
+}
 
 
 If($PrimaryAssignedUser.memberOf.count -gt 0){
@@ -964,41 +1015,42 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Cyan -NoNewline
     Write-Host (" groups" ) -ForegroundColor White
-    
+
     If($PSBoundParameters.ContainsKey('CheckUserLicense'))
     {
         Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $PrimaryAssignedUser.assignedLicenses.count) -ForegroundColor Cyan -NoNewline
         Write-Host (" licenses" ) -ForegroundColor White
     }
-    
-    
+
+
     Write-Host ("`n    |---Checking group assignments for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName) -NoNewline
     #iterate through each group id for name
     If($UserAssignedApps.count -gt 0){
         Foreach($Group in $PrimaryAssignedUser.memberOf){
-        
+
             #check to see if any of the groups are dynamic groups using orderid
             If($Group.id -in $appAssignmentList.groupId){
-                Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) 
+                Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
                 Write-Host ("        |---User is assigned to the app assigned group: ") -NoNewline -ForegroundColor Gray
                 Write-Host ("{0}" -f $Group.displayName) -ForegroundColor Yellow
                 $AssignedToESPApp = $true
             }
         }
-    
+
         If(!$AssignedToESPApp){
             Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-            Write-Error ("`nThe specified user [{0}] is not assigned to user apps in ESP. `
+            Write-Host ("`nThe specified user [{0}] is not assigned to user apps in ESP. `
             `nIf the user is not assigned the ESP apps: [{1}], Autopilot may fail or timeout. `
-            `rACTION: Assign user to groups [{2}] and rerun script to continue." -f $PrimaryAssignedUser.userPrincipalName,($UserAssignedApps.Name -join ','),($UserAssignedAppsGroups -join ','))
+            `rACTION: Assign user to groups [{2}] and rerun script." -f $PrimaryAssignedUser.userPrincipalName,($UserAssignedApps.Name -join ','),($UserAssignedAppsGroups -join ',')) -ForegroundColor Red
+            Exit
         }
     }Else{
-        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) 
+        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
         Write-Host ("        |---ESP user group assignments to check: ") -NoNewline -ForegroundColor White
         Write-Host ("{0}" -f '0') -ForegroundColor Yellow
     }
-    
+
 }
 
 If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
@@ -1007,13 +1059,13 @@ If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.C
 
         # determine license name
         If($licenseHashTable.count -gt 0){
-            $AssignedLicenseName = ($licenseHashTable[$AssignedLicense.skuId].GetEnumerator() | Where Name -eq ProductDisplayName).Value
+            $AssignedLicenseName = ($licenseHashTable[$AssignedLicense.skuId].GetEnumerator() | Where-Object Name -eq ProductDisplayName).Value
         }Else{
-            $AssignedLicenseName = ($IntuneLicenses | Where skuId -eq $AssignedLicense.skuId).skuPartNumber 
+            $AssignedLicenseName = ($IntuneLicenses | Where-Object skuId -eq $AssignedLicense.skuId).skuPartNumber
         }
-        
+
         # check if license is one of the Intune licenses
-        If($AssignedLicense.skuId -in ($IntuneLicenses.skuId | Select -Unique)){
+        If($AssignedLicense.skuId -in ($IntuneLicenses.skuId | Select-Object -Unique)){
             Write-Host ("        |---User is assigned an Intune license: ") -NoNewline -ForegroundColor Gray
             Write-Host ("{0}" -f $AssignedLicenseName) -ForegroundColor Green
             $AssignedToIntuneLicense = $true
@@ -1026,10 +1078,74 @@ If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.C
 
     If(!$AssignedToIntuneLicense){
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-Error ("`nThe specified user [{0}] is not assigned an Intune license; Autopilot will fail during enrollment" -f $PrimaryAssignedUser.userPrincipalName)
+        Write-host ("The MDM Policy assigned group does not include the user [{0}] `
+        `nIf the specified user [{0}] is not assigned an Intune license; Autopilot will fail during enrollment `
+        `rACTION: Assign the user an Intune license and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Exit
     }
 }
 
+If($PSBoundParameters.ContainsKey('CheckAzureAdvSettings')){
+    # Check Azure AD device join settings
+
+    Write-Host ("`n    |---Checking Azure AD device join settings...") -NoNewline
+    $AADRegistrationSettings = Invoke-MgGraphRequest -Method GET `
+            -Uri "$script:GraphEndpoint/beta/policies/deviceRegistrationPolicy"
+
+    switch($AADRegistrationSettings.azureADJoin.appliesTo){
+        '0' {
+            Write-Host ("{0}" -f (Get-Symbol -Symbol RedX))
+            Write-Host ("        |---Azure AD device join settings: ") -NoNewline -ForegroundColor Gray
+            Write-Host ("{0}" -f 'None') -ForegroundColor Red
+            $CheckAADGroup = $false
+            $AADJoinAllowed = $false
+        }
+
+        '1' {
+            Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+            Write-Host ("        |---Azure AD device join settings: ") -NoNewline -ForegroundColor Gray
+            Write-Host ("{0}" -f 'All') -ForegroundColor Green
+            $CheckAADGroup = $false
+            $AADJoinAllowed = $true
+        }
+
+        '2' {
+            Write-Host ("{0}" -f (Get-Symbol -Symbol Information))
+            Write-Host ("        |---Azure AD device join settings: ") -NoNewline -ForegroundColor Gray
+            Write-Host ("{0}" -f 'Selected') -ForegroundColor Yellow
+            $CheckAADGroup = $true
+            $AADJoinAllowed = $false
+        }
+    }
+
+    # check if user is in the allowed group
+    If($CheckAADGroup){
+        Foreach($Group in $PrimaryAssignedUser.memberOf){
+            If($Group.id -in $AADRegistrationSettings.azureADJoin.allowedGroups){
+                Write-Host ("        |---User is included in Azure AD join group: ") -ForegroundColor Gray -NoNewline
+                $Group = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/groups/$($Group.id)")
+                Write-Host ("{0}" -f $Group.displayName ) -ForegroundColor Yellow
+
+                $AADJoinAllowed = $true
+            }
+        }
+    }
+
+    If(!$AADJoinAllowed){
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-host ("The MDM Policy assigned group does not include the user [{0}] `
+        `nIf the user isn't part of the Azure AD join group, Autopilot device cannot join and will fail with error code: 801c03ed. `
+        `rACTION: Add user to Azure AD group in the device setting's join policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Exit
+    }
+
+    <#
+            # Check Azure AD Conditional Access Policy
+    Write-Host ("`n    |---Checking Conditional Access policy...") -NoNewline
+    $ConditionalAccessPolicies = Invoke-MgGraphRequest -Method GET `
+            -Uri "$script:GraphEndpoint/beta/policies/conditionalAccessPolicies"
+    #>
+}
 
 # check MDM Policy
 If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
@@ -1043,16 +1159,16 @@ If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense'))
     Write-Verbose ("MDM policy assigned as: {0}" -f $MDMPolicy.appliesTo)
     switch ($MDMPolicy.appliesTo){
         'all' {
-            Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) 
+            Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
             $MDMPolicyAssigned = $true
         }
         'selected' {
-            
+
             If($PrimaryAssignedUser){
                 Foreach($Group in $PrimaryAssignedUser.memberOf){
-                    If($Group.id -in $MDMPolicy.includedGroups.id){                        
-                        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))   
-                        Write-Host ("        |---User is included in group: ") -ForegroundColor Gray -NoNewline 
+                    If($Group.id -in $MDMPolicy.includedGroups.id){
+                        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+                        Write-Host ("        |---User is included in group: ") -ForegroundColor Gray -NoNewline
                         $Group = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/groups/$($Group.id)")
                         Write-Host ("{0}" -f $Group.displayName ) -ForegroundColor Yellow
 
@@ -1063,31 +1179,32 @@ If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense'))
 
             If(!$MDMPolicyAssigned){
                 Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-                Write-error ("The MDM Policy assigne group does not include the user [{0}] `
+                Write-host ("The MDM Policy assigned group does not include the user [{0}] `
                 `nIf the user isn't assigned the MDM policy, the Autopilot device cannot enroll into Intune and will fail. `
-                `rACTION: Add user to MDM policy and rerun script to continue." -f $PrimaryAssignedUser.UserPrincipalName)
+                `rACTION: Add user to MDM policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+                Exit
             }
         }
-        'none' { 
+        'none' {
             Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-            Write-error ("MDM Policy is not enabled! `
+            Write-host ("MDM Policy is not enabled! `
             `nAutopilot requires the MDM policy to be enabled and assigned `
-            `rACTION: Change the MDM policy to [All] or [Some] and rerun script to continue.")
+            `rACTION: Change the MDM policy to [All] or [Some] and rerun script.") -ForegroundColor Red
+            Exit
         }
         default{$MDMPolicyAssigned = $false}
 
     }
 
-    
 }
 
 Write-Host ("`nAutopilot readiness completed!") -ForegroundColor Cyan
 
 If($UserAssignedApps.count -gt 0){
     If($PrimaryAssignedUser){
-        Write-Host ("`nNOTE: If the user enrolling this device during Autopilot is not the user [{0}]; additional checks must be done for that user" -f $PrimaryAssignedUser.userPrincipalName) -ForegroundColor Yellow
+        Write-Host ("`nNOTE: If the user enrolling this device during Autopilot is not the user [{0}]; rerun this script with [-UserPrincipalName] parameter" -f $PrimaryAssignedUser.userPrincipalName) -ForegroundColor Yellow
     }Else{
         Write-Host ("`nNOTE: User app(s) detected in ESP: [{0}]`nThe user enrolling the device must be assigned to to these apps as [required] for Autopilot to complete successfully" -f ($UserAssignedApps.Name -join ',')) -ForegroundColor Yellow
     }
-    
+
 }

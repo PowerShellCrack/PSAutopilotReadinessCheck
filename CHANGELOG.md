@@ -1,5 +1,13 @@
 # Change log for AutoPilotReadiness.ps1
 
+## 2.2.0 - August 2, 2023
+
+- Resolved code best practices: changed alias cmdlets to cmdlet
+- Updated error output; changed from write-error to write-host
+- Added Azure Advanced settings parameter; azure ad join setting check
+- Refined permission scopes. Removed unused permissions
+- Updated readme with permissions table and parameters.
+
 ## 2.1.0 - August 1, 2023
 
 - Fixed license check for users; it checked it all the time. 
@@ -16,7 +24,7 @@
 ## 1.5.0 - July 20, 2023
 
 - Changed all graph calls to use API. Allows for proper scoping to work
-- Added UserPricinpalName check; define user to check for Autopilot readiness
+- Added UserPrincipalName check; define user to check for Autopilot readiness
 
 ## 1.0.0 - June 28, 2023
 
