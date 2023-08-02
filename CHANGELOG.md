@@ -1,12 +1,13 @@
 # Change log for AutoPilotReadiness.ps1
 
-## 2.2.0 - August 2, 2023
+## 2.2.1 - August 2, 2023
 
 - Resolved code best practices: changed alias cmdlets to cmdlet
 - Updated error output; changed from write-error to write-host
 - Added Azure Advanced settings parameter; azure ad join setting check
 - Refined permission scopes. Removed unused permissions
 - Updated readme with permissions table and parameters.
+- Fixed verbose output and value output; no line wrapping
 
 ## 2.1.0 - August 1, 2023
 

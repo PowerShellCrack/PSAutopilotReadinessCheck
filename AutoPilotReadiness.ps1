@@ -8,7 +8,7 @@
     .NOTES
         Author		: Dick Tracy <richard.tracy@hotmail.com>
 	    Source		: https://github.com/PowerShellCrack/AutopilotTimeZoneSelectorUI
-        Version		: 2.2.0
+        Version		: 2.2.1
         README      : Review README.md for more details and configurations
         CHANGELOG   : Review CHANGELOG.md for updates and fixes
         IMPORTANT   : By using this script or parts of it, you have read and accepted the DISCLAIMER.md and LICENSE agreement
