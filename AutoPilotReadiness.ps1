@@ -39,9 +39,11 @@ Param(
     [ValidateSet('Public','USGov','USDoD')]
     [string]$AzureEnvironment = 'Public',  
 
+    [Parameter(Mandatory = $false,ParameterSetName='user')]
     [Parameter(Mandatory = $true,ParameterSetName='device')]
     [string]$DeviceName,
     
+    [Parameter(Mandatory = $false,ParameterSetName='user')]
     [Parameter(Mandatory = $true,ParameterSetName='serial')]
     [string]$Serial,
 
