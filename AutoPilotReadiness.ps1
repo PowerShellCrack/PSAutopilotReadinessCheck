@@ -8,19 +8,22 @@
     .NOTES
         Author		: Dick Tracy <richard.tracy@hotmail.com>
 	    Source		: https://github.com/PowerShellCrack/AutopilotTimeZoneSelectorUI
-        Version		: 2.0.0
+        Version		: 2.1.0
         README      : Review README.md for more details and configurations
         CHANGELOG   : Review CHANGELOG.md for updates and fixes
         IMPORTANT   : By using this script or parts of it, you have read and accepted the DISCLAIMER.md and LICENSE agreement
 
     .PARAMETER AzureEnvironment
-    
+        Specify the Azure environment for graph
     
     .PARAMETER Serial
         Specify the serial number of a device.
     
     .PARAMETER DeviceName
         Specify the deviceName to check against. 
+
+    .PARAMETER UserPrincipalName
+        Specity the UserPrinciplName
 
     .EXAMPLE
        .\AutoPilotReadiness.ps1 -Serial 'N4N0CX11Z173170'
@@ -112,6 +115,38 @@ Function Get-Symbol{
     
 }
 
+Function Set-GapCharacter {
+    <#
+    .SYNOPSIS
+    Sets the gap character for host output
+
+    .PARAMETER Character
+    The character to use for the gap
+    .PARAMETER Gap
+    The number of characters to use for the gap
+    .PARAMETER MessageLength
+    Account for the lenth in the message to allign the gap
+    #>
+    Param(
+        [Parameter(Mandatory = $false)]
+        [ValidateSet(' ','-','_','.')]
+        [string]$Character = '.',
+        [Parameter(Mandatory = $false)]
+        [int]$Gap = 50,
+        [Parameter(Mandatory = $true)]
+        [int]$MessageLength
+    )
+    #$script:GapCharacter = $Character*$Gap
+    If($Gap -lt $MessageLength){
+        $script:GapCharacter = $Character*($Gap) 
+    }else {
+        $script:GapCharacter = $Character*($Gap-$MessageLength)
+    }
+    
+
+    return $script:GapCharacter
+}
+
 Write-Host ("`nPrerequisite check...") -ForegroundColor Cyan
 
 # Determine what environment to use
@@ -150,6 +185,8 @@ $i=0
 Foreach($Module in $Modules){
     $i++
     Write-Host ("        |---[{0} of {1}]: Installing module {2}..." -f $i,$Modules.count,$Module) -NoNewline
+    #Write-Host ('{0}{1}' -f $msg,(Set-GapCharacter -MessageLength $msg.Length)) -NoNewline
+
     if ( Get-Module -FullyQualifiedName $Module -ListAvailable ) {
         Write-Host ("already installed") -ForegroundColor Green
     }
@@ -174,7 +211,7 @@ Foreach($Module in $Modules){
 Write-Host ("    |---Connecting to tenant...") -NoNewline:$NoNewLine
 #REFERNCE: https://learn.microsoft.com/en-us/graph/permissions-reference
 try{
-    $Scopes =  @(
+    $Scopes = @(
         'Device.Read.All'
         'Directory.Read.All'
         'GroupMember.Read.All'
@@ -188,7 +225,8 @@ try{
         'DeviceManagementManagedDevices.Read.All'
         'DeviceManagementRBAC.Read.All'
     )
-    If($CheckLicenses){
+
+    If($PSBoundParameters.ContainsKey('CheckLicenses')){
         $Scopes += @(
             'Organization.Read.All'
             'Policy.Read.All'
@@ -376,8 +414,9 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 #------------------------------------------------------------------------------------------
 Write-Host ("`n    |---Retrieving groups assigned to device object [{0}]..." -f $AzureADDevice.id) -NoNewline
 $assignedDeviceGroups = @()
-$assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
-                        -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
+#$assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
+#                        -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
+$assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
 
 If($assignedDeviceGroups.count -ge 1){
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
@@ -785,7 +824,7 @@ Foreach($app in $associatedAssignments){
     }
 }
 
-If($CheckLicenses){
+If($PSBoundParameters.ContainsKey('CheckLicenses')){
     Write-Host ("`n    |---Attempting to retrieve license display names from Microsoft...") -ForegroundColor Gray -NoNewline 
     Try{
         #REFERENCE: https://rakhesh.com/azure/m365-licensing-displayname-to-sku-name-mapping/
@@ -864,8 +903,9 @@ If($UserPrincipalName)
 
     Write-Host ("`n    |---Retrieving account details for specified user principal name [{0}]..." -f $UserPrincipalName) -NoNewline
     Try{
-        $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
-                            -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
+        #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
+        #                    -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
+        $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))                      
 
     }Catch{
@@ -881,9 +921,9 @@ ElseIf($IntuneDevice.userPrincipalName)
 
     Write-Host ("`n    |---Retrieving account details for current primary user [{0}]..." -f $IntuneDevice.userPrincipalName) -NoNewline
     Try{
-        $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
-                                -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
-        
+        #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
+        #                        -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
+        $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))        
     }Catch{
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
@@ -910,9 +950,14 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Cyan -NoNewline
     Write-Host (" groups" ) -ForegroundColor White
-    Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
-    Write-Host ("{0}" -f $PrimaryAssignedUser.assignedLicenses.count) -ForegroundColor Cyan -NoNewline
-    Write-Host (" licenses" ) -ForegroundColor White
+    
+    If($PSBoundParameters.ContainsKey('CheckLicenses'))
+    {
+        Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
+        Write-Host ("{0}" -f $PrimaryAssignedUser.assignedLicenses.count) -ForegroundColor Cyan -NoNewline
+        Write-Host (" licenses" ) -ForegroundColor White
+    }
+    
     
     Write-Host ("`n    |---Checking group assignments for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName) -NoNewline
     #iterate through each group id for name
@@ -942,7 +987,7 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     
 }
 
-If($PrimaryAssignedUser.assignedLicenses.count -gt 0){
+If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.ContainsKey('CheckLicenses')){
     Write-Host ("`n    |---Checking Intune licenses for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName)
     Foreach($AssignedLicense in $PrimaryAssignedUser.assignedLicenses){
 
@@ -963,7 +1008,6 @@ If($PrimaryAssignedUser.assignedLicenses.count -gt 0){
             #Write-Host ("{0}" -f $AssignedLicenseName) -ForegroundColor White
         }
 
-        
     }
 
     If(!$AssignedToIntuneLicense){
@@ -974,13 +1018,13 @@ If($PrimaryAssignedUser.assignedLicenses.count -gt 0){
 
 
 # check MDM Policy
-If($PrimaryAssignedUser -or $PrimaryAssignedUser){
+If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckLicenses')){
     Write-Host ("`n    |---Checking MDM policy for user group...") -NoNewline
     $MDMPolicy = Invoke-MgGraphRequest -Method GET `
-            -Uri "https://graph.microsoft.com/beta/policies/mobileDeviceManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
+            -Uri "$script:GraphEndpoint/beta/policies/mobileDeviceManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
 
     #$MAMPolicy = Invoke-MgGraphRequest -Method GET `
-    #        -Uri "https://graph.microsoft.com/beta/policies/mobileAppManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
+    #        -Uri "$script:GraphEndpoint/beta/policies/mobileAppManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
 
     Write-Verbose ("MDM policy assigned as: {0}" -f $MDMPolicy.appliesTo)
     switch ($MDMPolicy.appliesTo){

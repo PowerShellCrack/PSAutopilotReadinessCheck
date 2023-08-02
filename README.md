@@ -72,7 +72,8 @@ Failed test
 ## Future plans
 
 - WPF UI
-- Logging
+- Make it modular
+- Logging (cmtrace format)
 - support assignment filters
 - Check if device is assigned at least one compliance policy (to ensure device will be compliant)
 - Check if device is part of a device filter

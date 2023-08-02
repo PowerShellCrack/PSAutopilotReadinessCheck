@@ -1,8 +1,13 @@
 .vs/
 .vs/*.vs/
-.vscode/
-.vscode/*
+!/.vscode/
+/.vscode/*
+!/functions/
+/functions/*
+!/resources/
+/resources/*
 secrets.ps1
 tests.ps1
 Readiness.json
 AutoPilotReadinessAdv.ps1
+AutoPilotReadinessUI.ps1
