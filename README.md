@@ -59,7 +59,6 @@ Run it against a device name
 Run it against a device name and check licenses if primary user is assigned
 ```powershell
 .\AutoPilotReadiness.ps1 -DeviceName 'DTOAAD-1Z156178' -CheckUserLicense
-
 ```
 Run it against a serial and check licenses for enrolling user
 ```powershell

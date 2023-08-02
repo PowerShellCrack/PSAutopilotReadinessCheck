@@ -241,9 +241,18 @@ Write-Host ("`nStarting Autopilot readiness check...") -ForegroundColor Cyan
 If ($PSCmdlet.ParameterSetName -eq "device")
 {
     Write-Host ("    |---Retrieving device name from Azure AD [{0}]..." -f $DeviceName) -NoNewline
-    $AzureADDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices?`$filter=displayName eq '$DeviceName'").Value
+    Try{
+        $AzureADDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices?`$filter=displayName eq '$DeviceName'").Value
+    }Catch{
 
-    If($null -ne $AzureADDevice){
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read policies from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [Device.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
+
+    If($AzureADDevice.count -eq 1){
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
         Write-Host ("        |---AzureAD Object id: ") -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $AzureADDevice.Id) -ForegroundColor Cyan
@@ -257,9 +266,9 @@ If ($PSCmdlet.ParameterSetName -eq "device")
 
         Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
         Write-Verbose ("{0} " -f $_.Exception.Message)
-        Write-Host ("Unable to retrieve device in Azure by device name [{0}] `
-        `nIf its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD. `
-        `rACTION: Upload hash and rerun script!" -f $DeviceName) -ForegroundColor Red
+        Write-Host ("Unable to retrieve device in Azure by device name [{0}]" -f $DeviceName) -ForegroundColor Red
+        Write-host ("REASON: If its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Upload hash and rerun script!") -ForegroundColor Red
         Exit
 
     }
@@ -268,8 +277,17 @@ If ($PSCmdlet.ParameterSetName -eq "device")
     If($null -ne $ZTDID){
 
         Try{
+            $AutopilotDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeviceIdentities/$ZTDID").Value  
+        }Catch{
 
-            $AutopilotDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeviceIdentities/$ZTDID")
+            Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+            Write-Verbose ("{0} " -f $_.Exception.Message)
+            Write-host ("REASON: Your graph permissions are not allowing you to read Autopilot devices from Intune.") -ForegroundColor Red
+            Write-host ("`nACTION: Ensure you have permissions [DeviceManagementManagedDevices.Read.All,DeviceManagementServiceConfig.Read.All] from graph and rerun script") -ForegroundColor Red
+            Exit
+        }
+
+        If($AutopilotDevice.count -eq 1){
             Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
             Write-Host ("        |---ZTDID: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f $ZTDID) -ForegroundColor Cyan
@@ -280,32 +298,37 @@ If ($PSCmdlet.ParameterSetName -eq "device")
                 Write-Host ("        |---Group tag: ") -ForegroundColor White -NoNewline
                 Write-Host ("{0}" -f $AutopilotDevice.groupTag) -ForegroundColor Green
             }
-
-        }Catch{
-
+        }Else{
             Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
             Write-Verbose ("{0} " -f $_.Exception.Message)
-            Write-Host ("Unable to determine if the device name [{0}] is registered as an Autopilot device `
-            `nIf its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD `
-            `rACTION: Ensure device has this attribute and rerun script." -f $DeviceName) -ForegroundColor Red
+            Write-Host ("Unable to determine if the device name [{0}] is registered as an Autopilot device" -f $DeviceName) -ForegroundColor Red
+            Write-host ("REASON: If its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD") -ForegroundColor Red
+            Write-host ("`nACTION: Ensure device has this attribute and rerun script.") -ForegroundColor Red
             Exit
 
         }
-
     }Else{
 
         Write-Host ("{0} " -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red -NoNewline
-        Write-Host ("Device [{0}] is not registered as an Autopilot device `
-        `nIf its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD `
-        `rACTION: Ensure device has this attribute and rerun script." -f $DeviceName) -ForegroundColor Red
+        Write-Host ("Device [{0}] is not registered as an Autopilot device" -f $DeviceName) -ForegroundColor Red
+        Write-host ("REASON: If its an new device and it has been imported as Autopilot device, the device name should have a [ZTDID] as a PhysicalId attribute in Azure AD") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure device has this attribute and rerun script.") -ForegroundColor Red
         Exit
     }
 
 
     Write-Host ("`n    |---Retrieving device name from Intune [{0}]..." -f $DeviceName) -NoNewline
     Try{
-
         $IntuneDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/deviceManagement/managedDevices?`$filter=deviceName eq '$DeviceName'").Value
+    }Catch{
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read devices from Intune.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [DeviceManagementManagedDevices.Read.All,DeviceManagementConfiguration.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
+
+    If($IntuneDevice.count -eq 1){
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
         Write-Host ("        |---Managed device id: ") -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $IntuneDevice.id) -ForegroundColor Cyan
@@ -324,10 +347,8 @@ If ($PSCmdlet.ParameterSetName -eq "device")
             Write-Host ("        |---Managed primary user: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f 'none') -ForegroundColor Yellow
         }
-
-    }Catch{
-
-        Write-Host ("{0} " -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow -NoNewline -NoNewline
+    }Else{
+        Write-Host ("{0} " -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow -NoNewline
         Write-Verbose ("{0} " -f $_.Exception.Message)
         Write-Host ("Device does not exist in Intune, could be new device...") -ForegroundColor Yellow
     }
@@ -338,9 +359,18 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 {
     Write-Host ("    |---Retrieving Autopilot device details from serial [{0}]..." -f $Serial) -NoNewline
 
-    $AutopilotDevice = (Invoke-MgGraphRequest -Method GET `
-                                -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$Serial')").Value
-    If($AutopilotDevice.Count -gt 0){
+    Try{
+        $AutopilotDevice = (Invoke-MgGraphRequest -Method GET `
+            -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$Serial')").Value
+    }Catch{
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read Autopilot devices from Intune.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [DeviceManagementServiceConfig.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
+    
+    If($AutopilotDevice.Count -eq 1){
 
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
         Write-Host ("        |---AzureAD Object Id: ") -ForegroundColor White -NoNewline
@@ -366,16 +396,23 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
 
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
         Write-Verbose ("{0} " -f $_.Exception.Message)
-        Write-Host ("`nUnable to retrieve Autopilot device from serial. Make sure the serial is correct and try again `
-        `rACTION: Re-import hash and rerun script." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
+        Write-Host ("`nUnable to retrieve Autopilot device from serial. Make sure the serial is correct and try again") -ForegroundColor Red
+        Write-host ("`nACTION: Re-import hardware hash and rerun script.") -ForegroundColor Red
         Exit
     }
 
     Write-Host ("`n    |---Retrieving Azure AD device id [{0}]..." -f $AutopilotDevice.AzureAdDeviceId) -NoNewline
     Try{
-
         $AzureADDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices?`$filter=deviceId eq '$($AutopilotDevice.AzureAdDeviceId)'").Value
+    }Catch{
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read devices from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [Device.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
 
+    If($AzureADDevice.Count -eq 1){
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
         Write-Host ("        |---Device Name: ") -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f  $AzureADDevice.displayName) -ForegroundColor Cyan
@@ -391,23 +428,29 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
             Write-Host ("        |---Device Type: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f 'Personal') -ForegroundColor Red
         }
-
-    }Catch{
-
+    }Else{
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
         Write-Verbose ("{0} " -f $_.Exception.Message)
-        Write-Host ("Unable to retrieve device in Azure by device id [{0}] `
-        `nIf its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD. `
-        `rACTION: Re-import hash and rerun script." -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
+        Write-Host ("Unable to retrieve device in Azure by device id [{0}]" -f $AutopilotDevice.AzureAdDeviceId) -ForegroundColor Red
+        Write-host ("REASON: If its an new device and it has been imported as Autopilot device, the device name should be the serial number and in Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Re-import hardware hash and rerun script.") -ForegroundColor Red
         Exit
-
     }
 
     If($IntuneEnrolled){
 
-        Write-Host ("`n    |---Retrieving device name from Intune [{0}]..." -f $AutopilotDevice.managedDeviceId) -NoNewline
+        Write-Host ("`n    |---Retrieving device details from Intune [{0}]..." -f $AutopilotDevice.managedDeviceId) -NoNewline
         Try{
             $IntuneDevice = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/deviceManagement/managedDevices/$($AutopilotDevice.managedDeviceId)")
+        }Catch{
+            Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+            Write-Verbose ("{0} " -f $_.Exception.Message)
+            Write-host ("REASON: Your graph permissions are not allowing you to read devices from Intune.") -ForegroundColor Red
+            Write-host ("`nACTION: Ensure you have permissions [DeviceManagementManagedDevices.Read.All,DeviceManagementConfiguration.Read.All] from graph and rerun script") -ForegroundColor Red
+            Exit
+        }
+        
+        If($IntuneDevice.count -eq 1){
             Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
             Write-Host ("        |---Managed device id: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f $IntuneDevice.id) -ForegroundColor Cyan
@@ -427,25 +470,33 @@ If ($PSCmdlet.ParameterSetName -eq "serial")
                 Write-Host ("{0}" -f 'none') -ForegroundColor Yellow
             }
 
-        }Catch{
+        }Else{
 
             Write-Host ("{0} " -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow -NoNewline
             Write-Verbose ("{0} " -f $_.Exception.Message)
-            Write-Host "Device does not exist in Intune, could be new device..." -ForegroundColor Yellow
+            Write-Host ("Device cannot be found in Intune, could be new device...") -ForegroundColor Yellow
 
         }
     }
 }
 
-If($null -ne $AzureADDevice){
+If($AzureADDevice.count -eq 1){
 
     # Get all Azure AD group the device is a member of
     #------------------------------------------------------------------------------------------
     Write-Host ("`n    |---Retrieving groups assigned to device object [{0}]..." -f $AzureADDevice.id) -NoNewline
     $assignedDeviceGroups = @()
-    #$assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
-    #                        -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
-    $assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
+    Try{
+        #$assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
+        #                        -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
+        $assignedDeviceGroups += (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/devices/$($AzureADDevice.id)/memberOf").Value
+    }Catch{
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read device groups from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [Device.Read.All,Group.Read.All,GroupMember.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
 
     If($assignedDeviceGroups.count -ge 1){
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
@@ -470,9 +521,9 @@ If($null -ne $AzureADDevice){
 
     Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
     Write-Verbose ("{0} " -f $_.Exception.Message)
-    Write-Host ("Device [{0}] is not found in Azure AD. `
-    `nIf the device is new, it should be imported as Autopilot device and the device name should be the serial number. `
-    `rACTION: Ensure device has been registered to Autopilot." -f $DeviceName) -ForegroundColor Red
+    Write-Host ("Device Name [{0}] was not found in Azure AD." -f $DeviceName) -ForegroundColor Red
+    Write-host ("REASON: If the device is new, it should be imported as Autopilot device and the device name should be the serial number.") -ForegroundColor Red
+    Write-host ("`nACTION: Ensure device has been registered to Autopilot.") -ForegroundColor Red
     Exit
 
 }
@@ -482,9 +533,16 @@ If($null -ne $AzureADDevice){
 # Get all deployment profiles and asssignments
 #------------------------------------------------------------------------------------------
 Write-Host "`n    |---Retrieving all Autopilot deployment profiles and assignments..." -NoNewline
-$DeploymentProfiles = (Invoke-MgGraphRequest -Method GET `
-                        -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeploymentProfiles?`$expand=assignments").Value
-
+Try{
+    $DeploymentProfiles = (Invoke-MgGraphRequest -Method GET `
+                                -Uri "$script:GraphEndpoint/beta/deviceManagement/windowsAutopilotDeploymentProfiles?`$expand=assignments").Value
+}Catch{
+    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+    Write-Verbose ("{0} " -f $_.Exception.Message)
+    Write-host ("REASON: Your graph permissions are not allowing you to read device groups from Azure AD.") -ForegroundColor Red
+    Write-host ("`nACTION: Ensure you have permissions [DeviceManagementServiceConfig.Read.All] from graph and rerun script") -ForegroundColor Red
+    Exit
+}
 $depProfileAssignments = @()
 #TEST  $DepProfile = $DeploymentProfiles[2]
 Foreach($DepProfile in $DeploymentProfiles){
@@ -506,6 +564,7 @@ Foreach($DepProfile in $DeploymentProfiles){
         $depProfileAssignments += $assignmentValue
     }
 }
+
 If($depProfileAssignments.count -gt 0){
 
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
@@ -516,9 +575,9 @@ If($depProfileAssignments.count -gt 0){
 
     Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
     Write-Verbose ("{0} " -f $_.Exception.Message)
-    Write-Host "No Deployment profiles were found! `
-    `nThere must be at least one Deployment profile created and assigned for a device to be Autopilot ready
-    `rACTION: Create a Deployment profile, assign it, and rerun script." -ForegroundColor Red
+    Write-Host ("No Deployment profiles were found!") -ForegroundColor Red
+    Write-host ("REASON: If there are no Autopilot deployment profiles created and assigned, the device will not be Autopilot ready!") -ForegroundColor Red
+    Write-host ("`nACTION: Create an Autopilot deployment profile, assign it, and rerun script.") -ForegroundColor Red
     Exit
 
 }
@@ -577,16 +636,16 @@ If($associatedAssignments.count -eq 1){
 }ElseIf($associatedAssignments.count -gt 1){
 
     Write-Host ("{0} {1} deployment profiles are associated" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Yellow
-    Write-Host "Imported device hash has more than one associated Deployment profile! `
-    `nIf a device has more than one deployment profile associated, it can cause inconsistant Autopilot experience.
-    `rACTION: Assign device to a single deployment profile and rerun script." -ForegroundColor Yellow
+    Write-Host ("Imported device hash has more than one associated deployment profile!") -ForegroundColor Yellow
+    Write-host ("REASON: If a device has more than one deployment profile associated, it can cause an inconsistant Autopilot experience.") -ForegroundColor Yellow
+    Write-host ("`nACTION: Assign device to a single deployment profile and rerun script.") -ForegroundColor Yellow
 
 }Else{
 
     Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-    Write-Host "Unable to determine which Deployment profile is assigned! `
-    `nIf a device has no deployment profile associated, Autopilot will not work correctly.
-    `rACTION: Assign device to a single deployment profile and rerun script." -ForegroundColor Red
+    Write-Host ("Unable to determine which Deployment profile is assigned!") -ForegroundColor Red
+    Write-host ("REASON: If a device has no deployment profile associated, device will not be Autopilot ready.") -ForegroundColor Red
+    Write-host ("`nACTION: Assign device to a single deployment profile and rerun script.") -ForegroundColor Red
     Exit
 }
 
@@ -597,8 +656,17 @@ If($associatedAssignments.count -eq 1){
 
 If($HybridProfile){
     Write-Host "`n    |---Checking to make sure hybrid configuration profile is assigned..." -NoNewline:$NoNewLine
-    $domainJoinPolicies = (Invoke-MgGraphRequest -Method GET `
+    Try{
+        $domainJoinPolicies = (Invoke-MgGraphRequest -Method GET `
                             -Uri "$script:GraphEndpoint/beta/deviceManagement/deviceConfigurations?`$filter=(isof('microsoft.graph.windowsDomainJoinConfiguration'))&`$expand=assignments").Value
+    }Catch{
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-host ("REASON: Your graph permissions are not allowing you to read device configurations from Intune.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [DeviceManagementConfiguration.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
+
 
     $hybridJoinPolicyAssignmentList = @()
     Foreach($domainJoinPolicy in $domainJoinPolicies){
@@ -655,17 +723,17 @@ If($HybridProfile){
     }ElseIf($associatedAssignments.count -gt 1){
 
         Write-Host ("{0} {1} hybrid profiles are assigned" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Red
-        Write-Host "Device assigned as Hybrid joined devices can only have one Hybrid join configuration profile assigned! `
-        `nIf a device has more than one configuration profile assigned, it can cause a conflict during Autopilot domain join process.
-        `rACTION: Assign device to a single configuration profile and rerun script." -ForegroundColor Red
+        Write-Host ("Device assigned as Hybrid joined devices can only have one Hybrid join configuration profile assigned!") -ForegroundColor Red
+        Write-host ("REASON: If a device has more than one configuration profile assigned, it can cause a conflict during Autopilot domain join process.") -ForegroundColor Red
+        Write-host ("`nACTION: Assign device to a single configuration profile and rerun script.") -ForegroundColor Red
         Exit
 
     }Else{
 
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-Host "Unable to determine if a Hybrid Join configuration profile is assigned! `
-        `nIf a device has no Hybrid Join configuration profile assigned, Autopilot will fail during deployment.
-        `rACTION: Assign device to a single configuration profile and rerun script." -ForegroundColor Red
+        Write-Host ("Unable to determine if a Hybrid Join configuration profile is assigned!") -ForegroundColor Red
+        Write-host ("REASON: If a device has no Hybrid Join configuration profile assigned, Autopilot will fail during deployment.") -ForegroundColor Red
+        Write-host ("`nACTION: Assign device to a single configuration profile and rerun script.") -ForegroundColor Red
         Exit
 
     }
@@ -677,8 +745,18 @@ If($HybridProfile){
 #5. Check if device is assigned an ESP and what are the apps assigned to it
 #------------------------------------------------------------------------------------------
 Write-Host "`n    |---Checking if device is assigned an ESP configuration..." -NoNewline:$NoNewLine
-$ESPProfiles = (Invoke-MgGraphRequest -Method GET `
-                    -Uri "$script:GraphEndpoint/beta/deviceManagement/deviceEnrollmentConfigurations?`$filter=deviceEnrollmentConfigurationType eq 'windows10EnrollmentCompletionPageConfiguration'&`$expand=assignments").Value
+Try{    
+    $ESPProfiles = (Invoke-MgGraphRequest -Method GET `
+                -Uri "$script:GraphEndpoint/beta/deviceManagement/deviceEnrollmentConfigurations?`$filter=deviceEnrollmentConfigurationType eq 'windows10EnrollmentCompletionPageConfiguration'&`$expand=assignments").Value
+    Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+}Catch{
+    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+    Write-Verbose ("{0} " -f $_.Exception.Message)
+    Write-host ("REASON: Your graph permissions are not allowing you to read device enrollment configurations from Intune.") -ForegroundColor Red
+    Write-host ("`nACTION: Ensure you have permissions [DeviceManagementConfiguration.Read.All,DeviceManagementServiceConfig.Read.All] from graph and rerun script") -ForegroundColor Red
+    Exit
+}
+
 $enrollmentAssignmentList = @()
 Foreach($ESPProfile in $ESPProfiles){
 
@@ -715,7 +793,7 @@ Foreach($espAssignment in $enrollmentAssignmentList){
         '#microsoft.graph.exclusionGroupAssignmentTarget' {
             If($espAssignment.groupId -in $assignedDeviceGroups.Id){
                 Write-Verbose ("Group id [{0}] is assigned as excluded; not counted for app [{1}]" -f $espAssignment.groupId,$espAssignment.Name)
-                $associatedAssignments = $associatedAssignments | Where-Object-Object groupId -NotIn $assignedDeviceGroups.Id
+                $associatedAssignments = $associatedAssignments | Where-Object groupId -NotIn $assignedDeviceGroups.Id
             }
         }
 
@@ -730,7 +808,7 @@ If($associatedAssignments.count -eq 1){
     Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
     Write-Host ("        |---ESP: ") -ForegroundColor White -NoNewline
     Write-Host ("{0}" -f $associatedAssignments.Name) -ForegroundColor Cyan
-    $WinningESP = $ESPProfiles | Where-Object-Object Id -eq $associatedAssignments.profileId
+    $WinningESP = $ESPProfiles | Where-Object Id -eq $associatedAssignments.profileId
 }ElseIf($associatedAssignments.count -ge 1){
     Write-Host ("{0} {1} ESP's are assigned" -f (Get-Symbol -Symbol WarningSign),$associatedAssignments.count) -ForegroundColor Yellow
     #iterate through each group id for name
@@ -755,26 +833,37 @@ If($associatedAssignments.count -eq 1){
 
 #TEST $WinningESP = $ESPProfiles[1]
 $EspAppsIds = $WinningESP.selectedMobileAppIds
-Write-Host ("        |---Winning ESP: " ) -ForegroundColor White -NoNewline
+Write-Host ("        |---Winning ESP: ") -ForegroundColor White -NoNewline
 Write-Host ("{0}" -f $WinningESP.displayName) -ForegroundColor Cyan
-Write-Host ("            |---Found: " ) -ForegroundColor White -NoNewline
-Write-Host ("{0}" -f $EspAppsIds.Count) -ForegroundColor Cyan -NoNewline
-Write-Host (" apps are required during ESP" ) -ForegroundColor White
-
+If($EspAppsIds.Count -gt 0){
+    Write-Host ("            |---Required apps found: ") -ForegroundColor White -NoNewline
+    Write-Host ("{0}" -f $EspAppsIds.Count) -ForegroundColor Yellow
+}Else{
+    Write-Host ("            |---No required apps found in ESP") -ForegroundColor White
+}
 
 
 #6. Check to see if one of those groups are assigned to the apps as required.
 #------------------------------------------------------------------------------------------
 
 If($EspAppsIds.count -gt 0){
-    Write-Host "`n    |---Checking if apps associated with winning ESP are assigned as [required]..." -NoNewline:$NoNewLine
+    Write-Host "`n    |---Checking if apps associated with winning ESP are assigned to Azure AD group(s)..." -NoNewline:$NoNewLine
 
     $appAssignmentList = @()
 
     #TEST $AppId = $EspAppsIds[0]
     Foreach($AppId in $EspAppsIds ){
-        $AppDetails = (Invoke-MgGraphRequest -Method GET `
-                    -Uri "$script:GraphEndpoint/beta/deviceAppManagement/mobileApps/$($AppId)?`$expand=assignments")
+        Try{
+            $AppDetails = (Invoke-MgGraphRequest -Method GET `
+                                -Uri "$script:GraphEndpoint/beta/deviceAppManagement/mobileApps/$($AppId)?`$expand=assignments")
+            Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+        }Catch{
+            Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+            Write-Verbose ("{0} " -f $_.Exception.Message)
+            Write-host ("REASON: Your graph permissions are not allowing you to read apps from Intune.") -ForegroundColor Red
+            Write-host ("`nACTION: Ensure you have permissions [DeviceManagementApps.Read.All] from graph and rerun script") -ForegroundColor Red
+            Exit
+        }
 
         foreach ($assignmentEntry in $AppDetails.assignments)
         {
@@ -813,7 +902,7 @@ Foreach($appAssignment in $appAssignmentList){
             '#microsoft.graph.exclusionGroupAssignmentTarget' {
                 If($appAssignment.groupId -in $assignedDeviceGroups.Id){
                     Write-Verbose ("Group id [{0}] does not count for app [{1}]" -f $appAssignment.groupId,$appAssignment.Name)
-                    $associatedAssignments = $associatedAssignments | Where-Object-Object groupId -NotIn $assignedDeviceGroups.Id
+                    $associatedAssignments = $associatedAssignments | Where-Object groupId -NotIn $assignedDeviceGroups.Id
                 }
             }
 
@@ -857,27 +946,28 @@ Foreach($app in $associatedAssignments){
 
 
     If($app.dataType -eq '#microsoft.graph.allLicensedUsersAssignmentTarget' ){
-        Write-Host ("            |---Assigned to user group: " ) -ForegroundColor White -NoNewline
-        Write-Host ("All Users") -ForegroundColor Green
+        Write-Host ("            |---Assigned to user group: ") -ForegroundColor White -NoNewline
+        Write-Host ("All Users") -ForegroundColor Cyan
     }ElseIf($app.dataType -eq '#microsoft.graph.allDevicesAssignmentTarget'){
-        Write-Host ("            |---Assigned to device group: " ) -ForegroundColor White -NoNewline
-        Write-Host ("All Devices") -ForegroundColor Green
+        Write-Host ("            |---Assigned to device group: ") -ForegroundColor White -NoNewline
+        Write-Host ("All Devices") -ForegroundColor Cyan
     }
     Else{
 
         #get group name
         $Group = (Invoke-MgGraphRequest -Method GET `
                     -Uri "$script:GraphEndpoint/beta/groups/$($app.groupId)")
+
         #get group member types
         $GroupMembers = (Invoke-MgGraphRequest -Method GET `
                     -Uri "$script:GraphEndpoint/beta/groups/$($app.groupId)/members").Value
         If( $GroupMembers[0].'@odata.type' -eq '#microsoft.graph.user'){
-            Write-Host ("            |---Assigned to user group: " ) -ForegroundColor White -NoNewline
+            Write-Host ("            |---Assigned to user group: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f $Group.displayName) -ForegroundColor Yellow
             $UserAssignedApps += $app
             $UserAssignedAppsGroups += $Group.displayName
         }Else{
-            Write-Host ("            |---Assigned to device group: " ) -ForegroundColor White -NoNewline
+            Write-Host ("            |---Assigned to device group: ") -ForegroundColor White -NoNewline
             Write-Host ("{0}" -f $Group.displayName) -ForegroundColor Green
         }
     }
@@ -899,9 +989,8 @@ If($PSBoundParameters.ContainsKey('CheckUserLicense')){
         }
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark)) -ForegroundColor Green
 
-        Write-Host ("        |---Parsed: " ) -ForegroundColor White -NoNewline
-        Write-Host ("{0}" -f $licenseHashTable.count) -ForegroundColor Cyan -NoNewline
-        Write-Host (" license skus" ) -ForegroundColor White
+        Write-Host ("        |---Total License Skus found: ") -ForegroundColor White -NoNewline
+        Write-Host ("{0}" -f $licenseHashTable.count) -ForegroundColor Cyan
     }Catch{
         Write-Host ("{0}. {1}" -f (Get-Symbol -Symbol Information), $_.Exception.Message) -ForegroundColor Yellow
     }
@@ -948,8 +1037,9 @@ If($PSBoundParameters.ContainsKey('CheckUserLicense')){
         }
     }Catch{
         Write-Host ("{0}" -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow
-        Write-Host ("Unable to determine available Intune licenses `
-        `nIf the enrolling user are note assigned the appropiate Intune licenses, Autopilot will fail.") -ForegroundColor Yellow
+        Write-Host ("Unable to determine available Intune licenses") -ForegroundColor Yellow
+        Write-host ("REASON: Your graph permissions are not allowing you to read licenses from Azure AD.") -ForegroundColor Yellow
+        Write-host ("`nACTION: Ensure you have permissions [Directory.Read.All,Organization.Read.All] from graph and rerun script") -ForegroundColor Yellow
     }
 }Else{
     #null out hashtable
@@ -960,49 +1050,48 @@ If($PSBoundParameters.ContainsKey('CheckUserLicense')){
 If($UserPrincipalName)
 {
 
-    Write-Host ("`n    |---Retrieving account details for specified user principal name [{0}]..." -f $UserPrincipalName) -NoNewline
+    Write-Host ("`n    |---Retrieving account details for specified user principal name [{0}]..." -f $UserPrincipalName)
     Try{
         #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
         #                    -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
         $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$UserPrincipalName'&`$expand=memberOf").Value
-        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
 
     }Catch{
 
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
         Write-Verbose ("{0} " -f $_.Exception.Message)
-        Write-Host ("Unable to retrieve user principal name from Azure [{0}] `
-        `nIf the user doesn't exist, the appropiate Intune licenses cannot be assigned and Autopilot will fail. `
-        `rACTION: Change user principal name and rerun script." -f $UserPrincipalName) -ForegroundColor Red
+        Write-host ("REASON: Your graph permissions are not allowing you to read users from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [User.Read.All] to read users from graph and rerun script") -ForegroundColor Red
         Exit
     }
 
 }
+# get details of current primary user if assigned
 ElseIf($IntuneDevice.userPrincipalName)
 {
-
     Write-Host ("`n    |---Retrieving account details for current primary user [{0}]..." -f $IntuneDevice.userPrincipalName) -NoNewline
     Try{
         #$PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Body (@{securityEnabledOnly=$false} | ConvertTo-Json) `
         #                        -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
         $PrimaryAssignedUser = (Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/users?`$filter=userPrincipalName eq '$($IntuneDevice.userPrincipalName)'&`$expand=memberOf").Value
-        Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
+
     }Catch{
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
         Write-Verbose ("{0} " -f $_.Exception.Message)
-        Write-Host ("Unable to retrieve user principal name from Azure [{0}] `
-        `nIf the user doesn't exist, the appropiate Intune licenses cannot be assigned and Autopilot will fail. `
-        `rACTION: User principal name and rerun script." -f $IntuneDevice.userPrincipalName) -ForegroundColor Red
+        Write-Host ("Unable to retrieve user principal name from Azure [{0}]" -f $IntuneDevice.userPrincipalName) -ForegroundColor Red
+        Write-host ("REASON: Your graph permissions are not allowing you to read users from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [User.Read.All] to read users from graph and rerun script") -ForegroundColor Red
         Exit
     }
 
 }Else{
     Write-Host ("{0}" -f (Get-Symbol -Symbol Information)) -ForegroundColor Yellow
-    Write-Host "No user specified or primary user is found; unable to determine if Intune license is assigned..." -ForegroundColor Yellow
+    Write-Host ("`nNo user specified or primary user is found; unable to determine if Intune license is assigned...") -ForegroundColor Yellow
+    Write-Host ("Continuing is risky; rerun this script with [-UserPrincipalName] parameter") -ForegroundColor Yellow
 }
 
 
-If($PrimaryAssignedUser.memberOf.count -gt 0){
+If($PrimaryAssignedUser.count -gt 0){
     #display user details
     If($PrimaryAssignedUser.onPremisesSamAccountName){
         Write-Host ("        |---Login Name: ") -NoNewline -ForegroundColor Gray
@@ -1012,19 +1101,23 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
     Write-Host ("{0}" -f $PrimaryAssignedUser.displayName) -ForegroundColor Yellow
     Write-Host ("        |---User Email Account: ") -NoNewline -ForegroundColor Gray
     Write-Host ("{0}" -f $PrimaryAssignedUser.mail) -ForegroundColor Yellow
-    Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
-    Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Cyan -NoNewline
-    Write-Host (" groups" ) -ForegroundColor White
+    Write-Host ("        |---User is assigned to: ") -ForegroundColor White -NoNewline
+    If($PrimaryAssignedUser.memberOf.count -gt 0){
+        Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Cyan -NoNewline
+    }Else{
+        Write-Host ("{0}" -f $PrimaryAssignedUser.memberOf.count) -ForegroundColor Red -NoNewline
+    }
+    Write-Host (" groups") -ForegroundColor White
 
     If($PSBoundParameters.ContainsKey('CheckUserLicense'))
     {
-        Write-Host ("        |---User is assigned to " ) -ForegroundColor White -NoNewline
+        Write-Host ("        |---User is assigned to ") -ForegroundColor White -NoNewline
         Write-Host ("{0}" -f $PrimaryAssignedUser.assignedLicenses.count) -ForegroundColor Cyan -NoNewline
-        Write-Host (" licenses" ) -ForegroundColor White
+        Write-Host (" licenses") -ForegroundColor White
     }
 
 
-    Write-Host ("`n    |---Checking group assignments for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName) -NoNewline
+    Write-Host ("`n    |---Checking App group assignments for user [{0}]..." -f $PrimaryAssignedUser.userPrincipalName) -NoNewline
     #iterate through each group id for name
     If($UserAssignedApps.count -gt 0){
         Foreach($Group in $PrimaryAssignedUser.memberOf){
@@ -1040,17 +1133,23 @@ If($PrimaryAssignedUser.memberOf.count -gt 0){
 
         If(!$AssignedToESPApp){
             Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-            Write-Host ("`nThe specified user [{0}] is not assigned to user apps in ESP. `
-            `nIf the user is not assigned the ESP apps: [{1}], Autopilot may fail or timeout. `
-            `rACTION: Assign user to groups [{2}] and rerun script." -f $PrimaryAssignedUser.userPrincipalName,($UserAssignedApps.Name -join ','),($UserAssignedAppsGroups -join ',')) -ForegroundColor Red
+            Write-Host ("`nThe specified user [{0}] is not assigned to user apps in ESP." -f $PrimaryAssignedUser.userPrincipalName) -ForegroundColor Red
+            Write-host ("REASON: If the user is not assigned the ESP apps: [{0}], Autopilot may fail or timeout." -f ($UserAssignedApps.Name -join ',')) -ForegroundColor Red
+            Write-host ("`nACTION: Assign user to groups [{0}] and rerun script." -f ($UserAssignedAppsGroups -join ',')) -ForegroundColor Red
             Exit
         }
     }Else{
         Write-Host ("{0}" -f (Get-Symbol -Symbol GreenCheckmark))
         Write-Host ("        |---ESP user group assignments to check: ") -NoNewline -ForegroundColor White
-        Write-Host ("{0}" -f '0') -ForegroundColor Yellow
+        Write-Host ("{0}" -f '0') -ForegroundColor Cyan
     }
 
+}Else{
+    Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+    Write-Host ("`nThe specified user [{0}] is not found in Azure." -f $UserPrincipalName) -ForegroundColor Red
+    Write-host ("REASON: If the user doesn't exist, the appropiate user assignments cannot be detemermined and Autopilot will fail.") -ForegroundColor Red
+    Write-host ("`nACTION: Change user principal name and rerun script.") -ForegroundColor Red
+    Exit
 }
 
 If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
@@ -1078,9 +1177,9 @@ If(($PrimaryAssignedUser.assignedLicenses.count -gt 0) -and $PSBoundParameters.C
 
     If(!$AssignedToIntuneLicense){
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-host ("The MDM Policy assigned group does not include the user [{0}] `
-        `nIf the specified user [{0}] is not assigned an Intune license; Autopilot will fail during enrollment `
-        `rACTION: Assign the user an Intune license and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("The MDM Policy assigned group does not include the user [{0}]" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("REASON: If the specified user [{0}] is not assigned an Intune license; Autopilot will fail during enrollment" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("`nACTION: Assign the user an Intune license and rerun script.") -ForegroundColor Red
         Exit
     }
 }
@@ -1089,8 +1188,17 @@ If($PSBoundParameters.ContainsKey('CheckAzureAdvSettings')){
     # Check Azure AD device join settings
 
     Write-Host ("`n    |---Checking Azure AD device join settings...") -NoNewline
-    $AADRegistrationSettings = Invoke-MgGraphRequest -Method GET `
-            -Uri "$script:GraphEndpoint/beta/policies/deviceRegistrationPolicy"
+    Try{
+        $AADRegistrationSettings = Invoke-MgGraphRequest -Method GET -Uri "$script:GraphEndpoint/beta/policies/deviceRegistrationPolicy"
+    }Catch{
+
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-Host ("Unable to retrieve Join policies from Azure") -ForegroundColor Red
+        Write-host ("REASON: Your graph permissions are not allowing you to read policies from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [Policy.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
 
     switch($AADRegistrationSettings.azureADJoin.appliesTo){
         '0' {
@@ -1133,9 +1241,9 @@ If($PSBoundParameters.ContainsKey('CheckAzureAdvSettings')){
 
     If(!$AADJoinAllowed){
         Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-        Write-host ("The MDM Policy assigned group does not include the user [{0}] `
-        `nIf the user isn't part of the Azure AD join group, Autopilot device cannot join and will fail with error code: 801c03ed. `
-        `rACTION: Add user to Azure AD group in the device setting's join policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("The MDM Policy assigned group does not include the user [{0}]" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("REASON: If the user isn't part of the Azure AD join group, Autopilot device cannot join and will fail with error code: 801c03ed." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+        Write-host ("`nACTION: Add user to Azure AD group in the device setting's join policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
         Exit
     }
 
@@ -1150,11 +1258,21 @@ If($PSBoundParameters.ContainsKey('CheckAzureAdvSettings')){
 # check MDM Policy
 If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense')){
     Write-Host ("`n    |---Checking MDM policy for user group...") -NoNewline
-    $MDMPolicy = Invoke-MgGraphRequest -Method GET `
+    Try{
+        $MDMPolicy = Invoke-MgGraphRequest -Method GET `
             -Uri "$script:GraphEndpoint/beta/policies/mobileDeviceManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
+        #$MAMPolicy = Invoke-MgGraphRequest -Method GET `
+        #    -Uri "$script:GraphEndpoint/beta/policies/mobileAppManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
 
-    #$MAMPolicy = Invoke-MgGraphRequest -Method GET `
-    #        -Uri "$script:GraphEndpoint/beta/policies/mobileAppManagementPolicies/0000000a-0000-0000-c000-000000000000?`$expand=includedGroups"
+    }Catch{
+
+        Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
+        Write-Verbose ("{0} " -f $_.Exception.Message)
+        Write-Host ("Unable to retrieve MDM policies from Azure") -ForegroundColor Red
+        Write-host ("REASON: Your graph permissions are not allowing you to read policies from Azure AD.") -ForegroundColor Red
+        Write-host ("`nACTION: Ensure you have permissions [Policy.Read.All] from graph and rerun script") -ForegroundColor Red
+        Exit
+    }
 
     Write-Verbose ("MDM policy assigned as: {0}" -f $MDMPolicy.appliesTo)
     switch ($MDMPolicy.appliesTo){
@@ -1179,17 +1297,17 @@ If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense'))
 
             If(!$MDMPolicyAssigned){
                 Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-                Write-host ("The MDM Policy assigned group does not include the user [{0}] `
-                `nIf the user isn't assigned the MDM policy, the Autopilot device cannot enroll into Intune and will fail. `
-                `rACTION: Add user to MDM policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+                Write-host ("The MDM Policy assigned group does not include the user [{0}]" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+                Write-host ("REASON: If the user isn't assigned the MDM policy, the Autopilot device cannot enroll into Intune and will fail." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+                Write-host ("`nACTION: Add user to MDM policy and rerun script." -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
                 Exit
             }
         }
         'none' {
             Write-Host ("{0}" -f (Get-Symbol -Symbol RedX)) -ForegroundColor Red
-            Write-host ("MDM Policy is not enabled! `
-            `nAutopilot requires the MDM policy to be enabled and assigned `
-            `rACTION: Change the MDM policy to [All] or [Some] and rerun script.") -ForegroundColor Red
+            Write-host ("MDM Policy is not enabled!" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+            Write-host ("Autopilot requires the MDM policy to be enabled and assigned" -f $PrimaryAssignedUser.UserPrincipalName) -ForegroundColor Red
+            Write-host ("`nACTION: Change the MDM policy to [All] or [Some] and rerun script.") -ForegroundColor Red
             Exit
         }
         default{$MDMPolicyAssigned = $false}
@@ -1199,12 +1317,3 @@ If($PrimaryAssignedUser -and $PSBoundParameters.ContainsKey('CheckUserLicense'))
 }
 
 Write-Host ("`nAutopilot readiness completed!") -ForegroundColor Cyan
-
-If($UserAssignedApps.count -gt 0){
-    If($PrimaryAssignedUser){
-        Write-Host ("`nNOTE: If the user enrolling this device during Autopilot is not the user [{0}]; rerun this script with [-UserPrincipalName] parameter" -f $PrimaryAssignedUser.userPrincipalName) -ForegroundColor Yellow
-    }Else{
-        Write-Host ("`nNOTE: User app(s) detected in ESP: [{0}]`nThe user enrolling the device must be assigned to to these apps as [required] for Autopilot to complete successfully" -f ($UserAssignedApps.Name -join ',')) -ForegroundColor Yellow
-    }
-
-}
