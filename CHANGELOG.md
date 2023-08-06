@@ -1,5 +1,23 @@
 # Change log for AutoPilotReadiness.ps1
 
+## 2.2.7 - August 5, 2023
+
+- Fixed User ESP app assignment check
+- Changed last output to show if autopilot is ready
+- Added Write-Action function to reduce repetitive code. 
+
+## 2.2.6 - August 4, 2023
+
+- Reduced repetitive logic into function; saving some lines of code
+- Enhanced ESP App detection and output
+- Fixed licenses output to display correctly for verbose
+
+## 2.2.5 - August 3, 2023
+
+- Change order or process; moved license check in prereq
+- Added Device restriction limit count; nee dto check user total enrollment still
+- Converted some repeating code to functions. 
+
 ## 2.2.1 - August 2, 2023
 
 - Resolved code best practices: changed alias cmdlets to cmdlet
