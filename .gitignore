@@ -7,7 +7,8 @@
 !/resources/
 /resources/*
 secrets.ps1
-tests.ps1
+tests.*
 Readiness.json
 AutoPilotReadinessAdv.ps1
 AutoPilotReadinessUI.ps1
+.images/Thumbs.db

@@ -1,5 +1,10 @@
 # Change log for AutoPilotReadiness.ps1
 
+## 2.2.8 - September 20, 2023
+
+- Fixed primary user output; added additional checks
+- output managed device status when not found
+
 ## 2.2.7 - August 5, 2023
 
 - Fixed User ESP app assignment check
