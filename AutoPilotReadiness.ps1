@@ -7,7 +7,7 @@
 
     .NOTES
         Author		: Dick Tracy <richard.tracy@hotmail.com>
-	    Source		: https://github.com/PowerShellCrack/AutopilotTimeZoneSelectorUI
+	    Source		: https://github.com/PowerShellCrack/PSAutopilotReadinessCheck
         Version		: 2.2.8
         README      : Review README.md for more details and configurations
         CHANGELOG   : Review CHANGELOG.md for updates and fixes
